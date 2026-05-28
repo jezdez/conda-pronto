@@ -16,7 +16,12 @@ fn main() {
     println!("cargo:rerun-if-changed=artifact.lock.hash");
     println!("cargo:rerun-if-changed=bundle.tar.zst");
     println!("cargo:rerun-if-env-changed=PRONTO_EMBED_BUNDLE");
+    println!("cargo:rerun-if-env-changed=PRONTO_DOCS_URL");
     println!("cargo:rerun-if-env-changed=CX_INSTALL_METHOD");
+    println!(
+        "cargo:rustc-env=PRONTO_DOCS_URL={}",
+        env::var("PRONTO_DOCS_URL").unwrap_or_else(|_| "https://jezdez.github.io/pronto/".into())
+    );
 
     let artifact_lock_src = manifest_dir.join("artifact.lock");
     let artifact_lock_dst = out_dir.join("artifact.lock");

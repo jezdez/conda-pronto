@@ -37,6 +37,10 @@ inputs:
       (increases size by 40-85 MB depending on platform). The output binary uses the z-suffixed artifact name.
     required: false
     default: "false"
+  docs-url:
+    description: "Documentation URL embedded in the runtime help output."
+    required: false
+    default: "https://jezdez.github.io/pronto/"
 
 outputs:
   binary-path:
@@ -100,6 +104,7 @@ runs:
       working-directory: .pronto
       env:
         EMBED_BUNDLE: ${{ inputs.embed-bundle }}
+        PRONTO_DOCS_URL: ${{ inputs.docs-url }}
       run: |
         TARGET="$(rustc -vV | grep '^host:' | cut -d' ' -f2)"
         if [[ "$EMBED_BUNDLE" == "true" ]]; then

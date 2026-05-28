@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-const AFTER_HELP: &str = "\x1b[1;4mQuick start:\x1b[0m
+const AFTER_HELP: &str = concat!(
+    "\x1b[1;4mQuick start:\x1b[0m
 
   cx bootstrap                           Install conda into ~/.cx
   cx create -n myenv python=3.12 numpy   Create an environment
@@ -21,7 +22,9 @@ const AFTER_HELP: &str = "\x1b[1;4mQuick start:\x1b[0m
   Any command not listed above is passed through to conda:
   cx install, cx remove, cx list, cx env, cx info, cx config, ...
 
-\x1b[4mDocs:\x1b[0m https://jezdez.github.io/pronto/";
+\x1b[4mDocs:\x1b[0m ",
+    env!("PRONTO_DOCS_URL")
+);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verbosity {

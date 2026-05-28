@@ -29,6 +29,9 @@ pronto run -- bootstrap --prefix /tmp/cx-smoke
 `pronto build` stages the binary and writes the artifact lock, package list,
 info JSON, and SHA256 checksum file next to it.
 
+The GitHub Action accepts `docs-url` to embed a distribution-specific docs link
+in the runtime help output.
+
 Runtime channels, packages, and excludes are configured in `pixi.toml` under
 `[tool.pronto]`.
 
