@@ -1,13 +1,19 @@
-# AGENTS.md — conda-express coding guidelines
+# AGENTS.md — pronto coding guidelines
 
 ## Project structure
 
-- `conda-express` is a Rust binary (with a Python wheel via maturin)
-  that bootstraps conda from scratch using rattler.
+- `pronto` is the generic build system split out of `conda-express`
+  for producing ready-to-run conda bootstrap binaries.
 
 - The Cargo workspace has two members: the root crate
-  (`conda-express` / `cx` binary) and `crates/cx-wasm` (WebAssembly
-  build for JupyterLite).
+  (currently carrying the inherited `cx` bootstrap runtime while the
+  migration continues) and `crates/pronto-build` (builder helper).
+
+- Do not add browser, WebAssembly, Emscripten, or JupyterLite behavior
+  here. That work belongs in the separate `conda-wasm` repository.
+
+- Avoid new `conda-express` distribution opinions in generic builder
+  paths. Distribution defaults belong in downstream config.
 
 - Tests for Rust live in `tests/` and inline `#[cfg(test)]` modules.
   Integration tests for the Python wheel go in `python/tests/`.
