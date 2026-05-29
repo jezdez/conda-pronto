@@ -41,7 +41,7 @@ path = "src/bin/pronto.rs"
 [features]
 default = ["native-tls"]
 native-tls = [
-  "reqwest/native-tls",
+  "reqwest/native-tls-vendored",
   "rattler/native-tls",
   "rattler_repodata_gateway/native-tls",
   "rattler_networking/native-tls",
