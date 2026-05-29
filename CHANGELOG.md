@@ -2,7 +2,7 @@
 
 All notable user-facing changes to `conda-pronto` are documented here.
 
-## 0.1.0 - Unreleased
+## 0.1.0 - 2026-05-29
 
 Initial release of `conda-pronto`, a generic builder for ready-to-run conda
 bootstrap binaries. The Rust crate is published as `conda-pronto` and installs
