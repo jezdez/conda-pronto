@@ -2,9 +2,9 @@
 source: tests/cli_integration.rs
 expression: stdout
 ---
-This runtime is a single-binary bootstrapper for conda.
+This runtime bootstraps a conda prefix from a stamped lockfile.
 
-It installs a conda environment from an embedded lockfile, uses conda-rattler-solver for solves, and conda-spawn for activation.
+After bootstrap, commands are passed through to the installed conda executable.
 
 Usage: pronto-runtime [OPTIONS] [COMMAND]
 

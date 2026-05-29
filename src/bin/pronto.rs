@@ -8,20 +8,33 @@ use rattler_conda_types::{PackageName, Platform};
 use rattler_lock::{CondaPackageData, LockFile, LockFileBuilder};
 use sha2::{Digest, Sha256};
 
-#[derive(serde::Deserialize)]
-struct PixiToml {
+#[path = "../runtime_data.rs"]
+mod runtime_data;
+
+#[derive(Clone, Default, serde::Deserialize)]
+struct ProjectManifest {
+    #[serde(default)]
     tool: ToolSection,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Clone, Default, serde::Deserialize)]
 struct ToolSection {
+    #[serde(default)]
     pronto: ProntoConfig,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Clone, Default, serde::Deserialize, serde::Serialize)]
 struct ProntoConfig {
     #[serde(default)]
+    channels: Vec<String>,
+    #[serde(default)]
+    packages: Vec<String>,
+    #[serde(default)]
     exclude: Vec<String>,
+    #[serde(default)]
+    environment: Option<String>,
+    #[serde(default, rename = "docs-url")]
+    docs_url: Option<String>,
 }
 
 #[derive(Parser)]
@@ -33,13 +46,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Derive the runtime lock from pixi.lock's runtime environment and filters
+    /// Derive the runtime lock from the configured lockfile environment and filters
     Lock {
         /// Only verify that the runtime lock can be derived; do not write it
         #[arg(long)]
         check: bool,
 
-        /// Project root (default: auto-detect from Cargo workspace)
+        /// Project root (default: auto-detect from current directory)
         #[arg(long)]
         root: Option<PathBuf>,
     },
@@ -50,7 +63,7 @@ enum Command {
         #[arg(long)]
         platform: Option<String>,
 
-        /// Project root (default: auto-detect from Cargo workspace)
+        /// Project root (default: auto-detect from current directory)
         #[arg(long)]
         root: Option<PathBuf>,
     },
@@ -81,7 +94,7 @@ enum Command {
         #[arg(long, default_value = "dist")]
         out_dir: PathBuf,
 
-        /// Project root (default: auto-detect from Cargo workspace)
+        /// Project root (default: auto-detect from current directory)
         #[arg(long)]
         root: Option<PathBuf>,
     },
@@ -104,7 +117,7 @@ enum Command {
         #[arg(long, default_value = "dist")]
         out_dir: PathBuf,
 
-        /// Project root (default: auto-detect from Cargo workspace)
+        /// Project root (default: auto-detect from current directory)
         #[arg(long)]
         root: Option<PathBuf>,
 
@@ -123,12 +136,12 @@ enum Command {
         #[arg(long)]
         json: bool,
 
-        /// Project root (default: auto-detect from Cargo workspace)
+        /// Project root (default: auto-detect from current directory)
         #[arg(long)]
         root: Option<PathBuf>,
     },
 
-    /// Override runtime packages/channels/exclude in pixi.toml for custom builds
+    /// Override runtime packages, channels, or excludes in the project manifest
     Configure {
         /// Comma-separated conda package specs (replaces [feature.runtime.dependencies])
         #[arg(long)]
@@ -142,7 +155,7 @@ enum Command {
         #[arg(long)]
         exclude: Option<String>,
 
-        /// Project root (default: auto-detect from Cargo workspace)
+        /// Project root (default: auto-detect from current directory)
         #[arg(long)]
         root: Option<PathBuf>,
     },
@@ -180,20 +193,32 @@ fn project_root(override_root: Option<&Path>) -> PathBuf {
     if let Some(root) = override_root {
         return root.to_path_buf();
     }
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest_dir
+
+    let current_dir = std::env::current_dir().expect("failed to read current directory");
+    find_project_root(&current_dir)
+        .or_else(|| find_project_root(&PathBuf::from(env!("CARGO_MANIFEST_DIR"))))
+        .expect("could not find project root containing conda.toml or pixi.toml")
+}
+
+fn find_project_root(start: &Path) -> Option<PathBuf> {
+    start
         .ancestors()
-        .find(|p| p.join("pixi.toml").exists())
-        .expect("could not find project root containing pixi.toml")
-        .to_path_buf()
+        .find(|p| p.join("conda.toml").exists() || p.join("pixi.toml").exists())
+        .map(Path::to_path_buf)
 }
 
 struct DerivedRuntimeLock {
     lock_file: LockFile,
     content: String,
+    runtime_config: ProntoConfig,
     platforms: Vec<Platform>,
     total_packages: usize,
     total_excluded: usize,
+}
+
+struct ProjectInput {
+    lock_path: PathBuf,
+    config: ProntoConfig,
 }
 
 fn write_runtime_lock(check: bool, root_override: Option<PathBuf>) {
@@ -222,44 +247,56 @@ fn write_runtime_lock(check: bool, root_override: Option<PathBuf>) {
 }
 
 fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
-    let pixi_lock_path = root.join("pixi.lock");
-    let pixi_toml_path = root.join("pixi.toml");
+    let input = discover_project_input(root);
+    let lock_content = std::fs::read_to_string(&input.lock_path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", input.lock_path.display()));
 
-    let pixi_toml = std::fs::read_to_string(&pixi_toml_path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", pixi_toml_path.display()));
-    let pixi_lock_content = std::fs::read_to_string(&pixi_lock_path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", pixi_lock_path.display()));
+    let lock_file = parse_lock(&lock_content, &input.lock_path);
 
-    let config: PixiToml =
-        toml::from_str(&pixi_toml).expect("failed to parse [tool.pronto] from pixi.toml");
-    let excludes = &config.tool.pronto.exclude;
-
-    let pixi_lock = parse_pixi_lock(&pixi_lock_content, &pixi_lock_path);
-
-    let runtime_env = pixi_lock.environment("runtime").unwrap_or_else(|| {
-        panic!(
-            "runtime environment not found in {}",
-            pixi_lock_path.display()
-        )
-    });
+    let runtime_env = if let Some(environment) = input.config.environment.as_deref() {
+        lock_file.environment(environment).unwrap_or_else(|| {
+            panic!(
+                "environment {environment:?} not found in {}",
+                input.lock_path.display()
+            )
+        })
+    } else if let Some(environment) = lock_file.environment("runtime") {
+        environment
+    } else {
+        lock_file.default_environment().unwrap_or_else(|| {
+            panic!(
+                "no runtime or default environment found in {}",
+                input.lock_path.display()
+            )
+        })
+    };
 
     let mut builder = LockFileBuilder::new();
     let platforms: Vec<Platform> = runtime_env.platforms().collect();
+    let mut runtime_config = input.config.clone();
 
     if !runtime_env.channels().is_empty() {
         builder.set_channels("default", runtime_env.channels().iter().cloned());
     }
+    if runtime_config.channels.is_empty() {
+        runtime_config.channels = runtime_env
+            .channels()
+            .iter()
+            .map(|channel| channel.url.clone())
+            .collect();
+    }
 
     let mut total_packages = 0usize;
     let mut total_excluded = 0usize;
+    let mut resolved_package_names = HashSet::new();
 
     for (platform, packages) in runtime_env.conda_packages_by_platform() {
         let pkgs: Vec<_> = packages.cloned().collect();
 
-        let filtered = if excludes.is_empty() {
+        let filtered = if input.config.exclude.is_empty() {
             pkgs
         } else {
-            let (kept, removed) = filter_excluded(&pkgs, excludes);
+            let (kept, removed) = filter_excluded(&pkgs, &input.config.exclude);
             if !removed.is_empty() {
                 eprintln!(
                     "  {platform}: excluded {} packages ({})",
@@ -273,8 +310,13 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
 
         total_packages += filtered.len();
         for pkg in filtered {
+            resolved_package_names.insert(pkg.record().name.as_normalized().to_string());
             builder.add_conda_package("default", platform, pkg);
         }
+    }
+    if runtime_config.packages.is_empty() {
+        runtime_config.packages = resolved_package_names.into_iter().collect();
+        runtime_config.packages.sort();
     }
 
     let new_lock = builder.finish();
@@ -285,9 +327,54 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
     DerivedRuntimeLock {
         lock_file: new_lock,
         content: new_content,
+        runtime_config,
         platforms,
         total_packages,
         total_excluded,
+    }
+}
+
+fn discover_project_input(root: &Path) -> ProjectInput {
+    let manifest_path = discover_manifest_path(root);
+
+    let lock_path = if manifest_path.file_name().and_then(|n| n.to_str()) == Some("conda.toml") {
+        root.join("conda.lock")
+    } else {
+        root.join("pixi.lock")
+    };
+    if !lock_path.exists() {
+        let lock_command = if lock_path.file_name().and_then(|n| n.to_str()) == Some("conda.lock") {
+            "conda workspace lock"
+        } else {
+            "pixi lock"
+        };
+        panic!(
+            "lockfile not found at {}; run `{lock_command}` first",
+            lock_path.display()
+        );
+    }
+
+    let manifest = std::fs::read_to_string(&manifest_path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", manifest_path.display()));
+    let config: ProjectManifest = toml::from_str(&manifest)
+        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", manifest_path.display()));
+
+    ProjectInput {
+        lock_path,
+        config: config.tool.pronto,
+    }
+}
+
+fn discover_manifest_path(root: &Path) -> PathBuf {
+    if root.join("conda.toml").exists() {
+        root.join("conda.toml")
+    } else if root.join("pixi.toml").exists() {
+        root.join("pixi.toml")
+    } else {
+        panic!(
+            "could not find conda.toml or pixi.toml in {}",
+            root.display()
+        );
     }
 }
 
@@ -300,19 +387,24 @@ fn write_generated_runtime_lock(path: &Path, content: &str) {
         .unwrap_or_else(|e| panic!("failed to write {}: {e}", path.display()));
 }
 
-fn parse_pixi_lock(pixi_lock_content: &str, pixi_lock_path: &Path) -> LockFile {
+fn parse_lock(lock_content: &str, lock_path: &Path) -> LockFile {
     let normalized_lock;
-    let lock_content = if pixi_lock_content.starts_with("version: 7\n") {
-        // Pixi lock v7 is backwards-compatible with rattler_lock's v6 parser for
-        // the conda package data `pronto lock` consumes.
-        normalized_lock = pixi_lock_content.replacen("version: 7\n", "version: 6\n", 1);
+    let lock_content = if lock_content.starts_with("version: 7\n") {
+        // Pixi lock v7 is backwards-compatible with rattler_lock's v6 parser
+        // for the conda package data `pronto lock` consumes.
+        normalized_lock = lock_content.replacen("version: 7\n", "version: 6\n", 1);
+        normalized_lock.as_str()
+    } else if lock_content.starts_with("version: 1\n") {
+        // conda-workspaces writes the rattler-lock schema with a conda-facing
+        // on-disk version. The conda package records are compatible here.
+        normalized_lock = lock_content.replacen("version: 1\n", "version: 6\n", 1);
         normalized_lock.as_str()
     } else {
-        pixi_lock_content
+        lock_content
     };
 
     LockFile::from_str(lock_content)
-        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", pixi_lock_path.display()))
+        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", lock_path.display()))
 }
 
 /// Remove explicitly excluded packages and any transitive dependencies that
@@ -629,14 +721,7 @@ fn build_artifact(
         )
     });
 
-    run_cargo_build(
-        &root,
-        &name,
-        layout == BundleLayout::Embedded,
-        target.as_deref(),
-        &runtime_lock_path,
-        generated_bundle.as_deref(),
-    );
+    run_cargo_build(&root, target.as_deref());
     stage_artifacts(
         &root,
         layout,
@@ -719,19 +804,7 @@ fn inspect_artifact(platform_str: Option<String>, json: bool, root_override: Opt
     }
 }
 
-fn run_cargo_build(
-    root: &Path,
-    name: &str,
-    embed_bundle: bool,
-    target: Option<&str>,
-    runtime_lock: &Path,
-    bundle: Option<&Path>,
-) {
-    let command_name = if embed_bundle {
-        format!("{name}z")
-    } else {
-        name.to_string()
-    };
+fn run_cargo_build(root: &Path, target: Option<&str>) {
     let mut command = std::process::Command::new("cargo");
     command
         .arg("build")
@@ -743,29 +816,6 @@ fn run_cargo_build(
         .current_dir(root);
     if let Some(target) = target {
         command.arg("--target").arg(target);
-    }
-    command
-        .env("PRONTO_RUNTIME_NAME", command_name)
-        .env("PRONTO_RUNTIME_EMBEDDED_NAME", format!("{name}z"))
-        .env("PRONTO_RUNTIME_DISPLAY_NAME", name)
-        .env("PRONTO_RUNTIME_PREFIX_DIR", format!(".{name}"))
-        .env("PRONTO_RUNTIME_METADATA_FILE", format!(".{name}.json"))
-        .env("PRONTO_RUNTIME_LOCK", runtime_lock)
-        .env(
-            "PRONTO_RUNTIME_BUNDLE_ENV_VAR",
-            runtime_env_var(name, "BUNDLE"),
-        )
-        .env(
-            "PRONTO_RUNTIME_OFFLINE_ENV_VAR",
-            runtime_env_var(name, "OFFLINE"),
-        );
-    if embed_bundle {
-        let bundle = bundle.expect("embedded builds require a generated bundle");
-        command.env("PRONTO_EMBED_BUNDLE", "1");
-        command.env("PRONTO_BUNDLE", bundle);
-    } else {
-        command.env_remove("PRONTO_EMBED_BUNDLE");
-        command.env_remove("PRONTO_BUNDLE");
     }
 
     let status = command.status().expect("failed to run cargo build");
@@ -801,6 +851,7 @@ fn stage_artifacts(
             binary.display()
         )
     });
+    stamp_runtime_data(&binary, layout, name, derived, generated_bundle);
 
     let bundle = if layout == BundleLayout::External {
         let source_bundle = generated_bundle.expect("external builds require a generated bundle");
@@ -985,6 +1036,51 @@ fn source_binary_path(root: &Path, target: Option<&str>) -> PathBuf {
     path
 }
 
+fn stamp_runtime_data(
+    binary: &Path,
+    layout: BundleLayout,
+    name: &str,
+    derived: &DerivedRuntimeLock,
+    generated_bundle: Option<&Path>,
+) {
+    let command_name = if layout == BundleLayout::Embedded {
+        format!("{name}z")
+    } else {
+        name.to_string()
+    };
+    let header = runtime_data::RuntimeDataHeader {
+        schema_version: 1,
+        command_name,
+        embedded_command_name: format!("{name}z"),
+        display_name: name.to_string(),
+        default_prefix_dir: format!(".{name}"),
+        metadata_file: format!(".{name}.json"),
+        bundle_env_var: runtime_env_var(name, "BUNDLE"),
+        offline_env_var: runtime_env_var(name, "OFFLINE"),
+        docs_url: derived
+            .runtime_config
+            .docs_url
+            .clone()
+            .unwrap_or_else(|| "https://jezdez.github.io/pronto/".to_string()),
+        install_method: None,
+        runtime_config: runtime_data::RuntimeConfig {
+            channels: derived.runtime_config.channels.clone(),
+            packages: derived.runtime_config.packages.clone(),
+            exclude: derived.runtime_config.exclude.clone(),
+        },
+        runtime_lock: derived.content.clone(),
+    };
+
+    let embedded_bundle = (layout == BundleLayout::Embedded)
+        .then(|| generated_bundle.expect("embedded builds require a generated bundle"));
+    runtime_data::append_to_binary(binary, &header, embedded_bundle).unwrap_or_else(|e| {
+        panic!(
+            "failed to stamp runtime data onto {}: {e}",
+            binary.display()
+        )
+    });
+}
+
 fn runtime_env_var(name: &str, suffix: &str) -> String {
     let prefix: String = name
         .chars()
@@ -1131,13 +1227,13 @@ fn configure(
     root_override: Option<PathBuf>,
 ) {
     let root = project_root(root_override.as_deref());
-    let pixi_toml_path = root.join("pixi.toml");
-    let content = std::fs::read_to_string(&pixi_toml_path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", pixi_toml_path.display()));
+    let manifest_path = discover_manifest_path(&root);
+    let content = std::fs::read_to_string(&manifest_path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", manifest_path.display()));
 
     let mut doc: toml_edit::DocumentMut = content
         .parse()
-        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", pixi_toml_path.display()));
+        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", manifest_path.display()));
 
     if let Some(ref pkgs) = packages {
         let specs: Vec<&str> = pkgs
@@ -1197,8 +1293,8 @@ fn configure(
         eprintln!("configured excludes: {}", excludes.join(", "));
     }
 
-    std::fs::write(&pixi_toml_path, doc.to_string())
-        .unwrap_or_else(|e| panic!("failed to write {}: {e}", pixi_toml_path.display()));
+    std::fs::write(&manifest_path, doc.to_string())
+        .unwrap_or_else(|e| panic!("failed to write {}: {e}", manifest_path.display()));
 }
 
 fn main() {

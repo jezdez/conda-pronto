@@ -84,7 +84,7 @@ pub fn run_conda_filtered(prefix: &Path, args: &[&str]) -> miette::Result<()> {
             println!("#");
             println!("# To activate this environment, use");
             println!("#");
-            println!("#     $ {} shell {name}", policy::COMMAND_NAME);
+            println!("#     $ {} shell {name}", policy::command_name());
             println!("#");
             println!("# To leave the environment, exit the subshell (Ctrl+D or `exit`).");
             println!("#");

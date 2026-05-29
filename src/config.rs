@@ -5,22 +5,15 @@ use std::sync::LazyLock;
 
 use miette::IntoDiagnostic;
 
-use crate::policy;
+use crate::{policy, runtime_data};
 
-/// The rattler-lock runtime lock embedded at compile time by `build.rs`.
-pub const EMBEDDED_LOCK: &str = include_str!(concat!(env!("OUT_DIR"), "/runtime.lock"));
+pub use crate::runtime_data::RuntimeConfig;
 
-/// Zstd-compressed tar of package archives, embedded when built with
-/// `PRONTO_EMBED_BUNDLE=1`. Empty (0 bytes) for builds without an embedded
-/// bundle.
-pub const EMBEDDED_BUNDLE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/bundle.tar.zst"));
-
-pub(crate) const INSTALL_METHOD: Option<&str> = option_env!("PRONTO_INSTALL_METHOD");
-
-/// The `pixi.toml` embedded at compile time (contains `[tool.pronto]`).
+/// The repository `pixi.toml` embedded as the default development
+/// configuration for an unstamped `pronto-runtime` binary.
 const EMBEDDED_PIXI_TOML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/pixi.toml"));
 
-// ─── [tool.pronto] in pixi.toml ──────────────────────────────────────────────
+// ─── Runtime configuration ──────────────────────────────────────────────────
 
 #[derive(serde::Deserialize)]
 struct PixiToml {
@@ -32,24 +25,40 @@ struct ToolSection {
     pronto: RuntimeConfig,
 }
 
-#[derive(serde::Deserialize)]
-pub struct RuntimeConfig {
-    pub channels: Vec<String>,
-    pub packages: Vec<String>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    pub exclude: Vec<String>,
-}
-
 static EMBEDDED_RUNTIME_CONFIG: LazyLock<RuntimeConfig> = LazyLock::new(|| {
+    let stamped = &runtime_data::current().header.runtime_config;
+    if !stamped.is_empty() {
+        return stamped.clone();
+    }
+
     let pixi: PixiToml =
         toml::from_str(EMBEDDED_PIXI_TOML).expect("invalid [tool.pronto] in pixi.toml");
     pixi.tool.pronto
 });
 
-/// Return a reference to the `[tool.pronto]` section from the embedded `pixi.toml`.
+/// Return the runtime package metadata embedded at build time.
 pub fn embedded_config() -> &'static RuntimeConfig {
     &EMBEDDED_RUNTIME_CONFIG
+}
+
+/// Return the rattler-lock runtime lock stamped onto the current artifact.
+pub fn embedded_lock() -> Option<&'static str> {
+    let lock = runtime_data::current().header.runtime_lock.as_str();
+    (!lock.is_empty()).then_some(lock)
+}
+
+/// Return the embedded compressed package bundle stamped onto the current
+/// artifact, when present.
+pub fn embedded_bundle() -> Option<&'static runtime_data::EmbeddedBundle> {
+    runtime_data::current().bundle.as_ref()
+}
+
+pub fn embedded_bundle_len() -> Option<u64> {
+    embedded_bundle().map(runtime_data::EmbeddedBundle::len)
+}
+
+pub(crate) fn install_method() -> Option<&'static str> {
+    runtime_data::current().header.install_method.as_deref()
 }
 
 // ─── Prefix metadata ────────────────────────────────────────────────────────
@@ -62,7 +71,7 @@ pub struct PrefixMetadata {
 }
 
 fn metadata_path(prefix: &Path) -> PathBuf {
-    prefix.join(policy::METADATA_FILE)
+    prefix.join(policy::metadata_file())
 }
 
 pub fn write_metadata(

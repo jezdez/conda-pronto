@@ -1,16 +1,25 @@
 //! Integration tests verifying the embedded runtime lock has been pre-filtered.
 #![cfg(feature = "runtime-template")]
 
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use rattler_conda_types::{Platform, RepoDataRecord};
 use rattler_lock::LockFile;
 
-const EMBEDDED_LOCK: &str = include_str!(concat!(env!("OUT_DIR"), "/runtime.lock"));
-
 fn records_from_embedded_lock() -> Vec<RepoDataRecord> {
+    let lock_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join("pronto")
+        .join("runtime.lock");
+    let lock_content = std::fs::read_to_string(&lock_path).unwrap_or_else(|err| {
+        panic!(
+            "failed to read {}; run `pronto lock` first: {err}",
+            lock_path.display()
+        )
+    });
     let lock_file =
-        LockFile::from_str(EMBEDDED_LOCK).expect("failed to parse embedded runtime lock");
+        LockFile::from_str(&lock_content).expect("failed to parse generated runtime lock");
     let env = lock_file
         .default_environment()
         .expect("no default environment");

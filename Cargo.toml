@@ -71,8 +71,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 zstd = "0.13"
 
-[build-dependencies]
-
 [profile.dev.package."*"]
 opt-level = 2
 

@@ -8,7 +8,7 @@ use rattler_conda_types::PrefixRecord;
 
 use crate::cli::{LockSource, Verbosity};
 use crate::config::{
-    EMBEDDED_LOCK, embedded_config, read_metadata, write_condarc, write_frozen, write_metadata,
+    embedded_config, embedded_lock, read_metadata, write_condarc, write_frozen, write_metadata,
 };
 use crate::{exec, install, policy};
 
@@ -131,11 +131,11 @@ pub(crate) async fn bootstrap(
 
     let lock_content = match &lock_source {
         LockSource::Embedded => {
-            if !EMBEDDED_LOCK.is_empty() {
+            if let Some(lock) = embedded_lock() {
                 if verbosity != Verbosity::Quiet {
                     eprintln!("   Using embedded lockfile");
                 }
-                Some(EMBEDDED_LOCK.to_string())
+                Some(lock.to_string())
             } else {
                 None
             }
@@ -199,10 +199,10 @@ pub(crate) async fn bootstrap(
             console::style("✔").green().bold()
         );
         eprintln!("   Prefix: {}", prefix.display());
-        eprintln!("   Run `{} status` for details.", policy::COMMAND_NAME);
+        eprintln!("   Run `{} status` for details.", policy::command_name());
         eprintln!(
             "   Use `{} <conda-args>` to run conda commands.",
-            policy::COMMAND_NAME
+            policy::command_name()
         );
     }
 
@@ -244,16 +244,16 @@ pub(crate) fn status(prefix: &Path) -> miette::Result<()> {
 
     let meta = read_metadata(prefix)?;
 
-    let bundle = crate::config::EMBEDDED_BUNDLE;
-    let binary_name = policy::status_binary_name(bundle);
+    let bundle_len = crate::config::embedded_bundle_len();
+    let binary_name = policy::status_binary_name(bundle_len.is_some());
     println!("{} {}", binary_name, env!("CARGO_PKG_VERSION"));
     println!("  prefix:   {}", prefix.display());
     println!("  channels: {}", meta.channels.join(", "));
     println!("  packages: {}", meta.packages.join(", "));
-    if !bundle.is_empty() {
+    if let Some(bundle_len) = bundle_len {
         println!(
             "  bundle:   embedded ({:.1} MB)",
-            bundle.len() as f64 / 1_048_576.0
+            bundle_len as f64 / 1_048_576.0
         );
     }
 
@@ -396,16 +396,16 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
         .context("failed to remove conda prefix")?;
 
     if let Some(ref bin) = runtime_binary {
-        let hint = match crate::config::INSTALL_METHOD {
-            Some("homebrew") => format!("   brew uninstall {}", policy::DISPLAY_NAME),
-            Some("cargo") => format!("   cargo uninstall {}", policy::DISPLAY_NAME),
+        let hint = match crate::config::install_method() {
+            Some("homebrew") => format!("   brew uninstall {}", policy::display_name()),
+            Some("cargo") => format!("   cargo uninstall {}", policy::display_name()),
             Some(method) => format!("   Installed via: {method}"),
             None => format!("   {}", bin.display()),
         };
         eprintln!(
             "\n{} To complete removal, delete the {} binary:",
             console::style("i").blue().bold(),
-            policy::COMMAND_NAME
+            policy::command_name()
         );
         eprintln!("{hint}");
     }
@@ -416,7 +416,7 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
         eprintln!(
             "\n{} {} has been uninstalled.",
             console::style("✔").green().bold(),
-            policy::DISPLAY_NAME
+            policy::display_name()
         );
     }
 
@@ -489,18 +489,18 @@ pub(crate) fn print_disabled_shell_command(command: &str) {
     eprintln!(
         "{} `conda {command}` is not available in {}.",
         console::style("!").yellow().bold(),
-        policy::DISPLAY_NAME
+        policy::display_name()
     );
     eprintln!();
     eprintln!(
         "  {} uses conda-spawn for environment activation.",
-        policy::DISPLAY_NAME
+        policy::display_name()
     );
     eprintln!("  Instead of `conda activate myenv`, run:");
     eprintln!();
     eprintln!(
         "    {}",
-        console::style(format!("{} shell myenv", policy::COMMAND_NAME)).green()
+        console::style(format!("{} shell myenv", policy::command_name())).green()
     );
     eprintln!();
     eprintln!("  To leave the environment, exit the subshell (Ctrl+D or `exit`).");
@@ -513,12 +513,12 @@ pub(crate) fn print_disabled_init() {
     eprintln!(
         "{} `conda init` is not needed with {}.",
         console::style("!").yellow().bold(),
-        policy::DISPLAY_NAME
+        policy::display_name()
     );
     eprintln!();
     eprintln!(
         "  {} uses conda-spawn, which does not require shell",
-        policy::DISPLAY_NAME
+        policy::display_name()
     );
     eprintln!("  profile modifications. Just add condabin to your PATH:");
     eprintln!();
@@ -526,7 +526,7 @@ pub(crate) fn print_disabled_init() {
         "    {}",
         console::style(format!(
             "export PATH=\"$HOME/{}/condabin:$PATH\"",
-            policy::DEFAULT_PREFIX_DIR
+            policy::default_prefix_dir()
         ))
         .green()
     );
@@ -535,7 +535,7 @@ pub(crate) fn print_disabled_init() {
     eprintln!();
     eprintln!(
         "    {}",
-        console::style(format!("{} shell myenv", policy::COMMAND_NAME)).green()
+        console::style(format!("{} shell myenv", policy::command_name())).green()
     );
     eprintln!();
     eprintln!("  Learn more: https://github.com/conda-incubator/conda-spawn");
@@ -566,7 +566,7 @@ mod tests {
         let prefix = policy::default_prefix().unwrap();
         assert_eq!(
             prefix.file_name().unwrap().to_str().unwrap(),
-            policy::DEFAULT_PREFIX_DIR,
+            policy::default_prefix_dir(),
             "default prefix should use policy default"
         );
         assert!(

@@ -2,53 +2,9 @@
 
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches, Parser};
 
-const AFTER_HELP: &str = concat!(
-    "\x1b[1;4mQuick start:\x1b[0m
-
-  ",
-    env!("PRONTO_RUNTIME_NAME"),
-    " bootstrap                           Install conda into ~/",
-    env!("PRONTO_RUNTIME_PREFIX_DIR"),
-    "
-  ",
-    env!("PRONTO_RUNTIME_NAME"),
-    " create -n myenv python=3.12 numpy   Create an environment
-  ",
-    env!("PRONTO_RUNTIME_NAME"),
-    " shell myenv                         Activate (spawns a subshell)
-  exit                                   Leave the environment
-
-\x1b[1;4mManagement:\x1b[0m
-
-  ",
-    env!("PRONTO_RUNTIME_NAME"),
-    " status                              Show installation details
-  ",
-    env!("PRONTO_RUNTIME_NAME"),
-    " uninstall                           Remove conda prefix and all environments
-
-\x1b[1;4mPass-through:\x1b[0m
-
-  Any command not listed above is passed through to conda:
-  ",
-    env!("PRONTO_RUNTIME_NAME"),
-    " install, ",
-    env!("PRONTO_RUNTIME_NAME"),
-    " remove, ",
-    env!("PRONTO_RUNTIME_NAME"),
-    " list, ",
-    env!("PRONTO_RUNTIME_NAME"),
-    " env, ",
-    env!("PRONTO_RUNTIME_NAME"),
-    " info, ",
-    env!("PRONTO_RUNTIME_NAME"),
-    " config, ...
-
-\x1b[4mDocs:\x1b[0m ",
-    env!("PRONTO_DOCS_URL")
-);
+use crate::policy;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verbosity {
@@ -59,15 +15,9 @@ pub enum Verbosity {
 
 #[derive(Debug, Parser)]
 #[clap(
-    name = env!("PRONTO_RUNTIME_NAME"),
-    about = "Single-binary conda bootstrapper powered by rattler",
     disable_help_subcommand = true,
-    long_about = "This runtime is a single-binary bootstrapper for conda.\n\n\
-        It installs a conda environment from an embedded lockfile, uses \
-        conda-rattler-solver for solves, and conda-spawn for activation.",
     version,
-    after_help = AFTER_HELP,
-    allow_external_subcommands = true,
+    allow_external_subcommands = true
 )]
 pub struct Cli {
     /// Increase output detail
@@ -83,6 +33,19 @@ pub struct Cli {
 }
 
 impl Cli {
+    pub fn parse_runtime() -> Self {
+        Self::parse_runtime_from(std::env::args_os())
+    }
+
+    pub fn parse_runtime_from<I, T>(args: I) -> Self
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<std::ffi::OsString> + Clone,
+    {
+        let matches = Self::runtime_command().get_matches_from(args);
+        Self::from_arg_matches(&matches).unwrap_or_else(|err| err.exit())
+    }
+
     pub fn verbosity(&self) -> Verbosity {
         if self.verbose {
             Verbosity::Verbose
@@ -92,6 +55,37 @@ impl Cli {
             Verbosity::Normal
         }
     }
+
+    fn runtime_command() -> clap::Command {
+        Self::command()
+            .name(policy::command_name())
+            .about("Single-binary conda bootstrap runtime")
+            .long_about(
+                "This runtime bootstraps a conda prefix from a stamped lockfile.\n\n\
+                After bootstrap, commands are passed through to the installed conda executable.",
+            )
+            .after_help(runtime_after_help())
+    }
+}
+
+fn runtime_after_help() -> String {
+    let name = policy::command_name();
+    format!(
+        "\x1b[1;4mQuick start:\x1b[0m\n\n  \
+        {name} bootstrap                           Install conda into ~/{prefix}\n  \
+        {name} create -n myenv python=3.12 numpy   Create an environment\n  \
+        {name} shell myenv                         Activate (spawns a subshell)\n  \
+        exit                                   Leave the environment\n\n\
+        \x1b[1;4mManagement:\x1b[0m\n\n  \
+        {name} status                              Show installation details\n  \
+        {name} uninstall                           Remove conda prefix and all environments\n\n\
+        \x1b[1;4mPass-through:\x1b[0m\n\n  \
+        Any command not listed above is passed through to conda:\n  \
+        {name} install, {name} remove, {name} list, {name} env, {name} info, {name} config, ...\n\n\
+        \x1b[4mDocs:\x1b[0m {docs_url}",
+        prefix = policy::default_prefix_dir(),
+        docs_url = policy::docs_url(),
+    )
 }
 
 #[derive(Debug, clap::Subcommand)]

@@ -225,22 +225,28 @@ pub async fn from_lockfile_offline(prefix: &Path, lock_content: &str) -> miette:
 
 /// Extract the embedded bundle (if any) to a temporary directory.
 ///
-/// Returns `Some(path)` when the binary was built with `PRONTO_EMBED_BUNDLE=1`
-/// and contains a non-empty `bundle.tar.zst`. Returns `None` for standard
-/// builds where the bundle is empty.
+/// Returns `Some(path)` when the current artifact contains an embedded
+/// `bundle.tar.zst`. Returns `None` for standard builds without an embedded
+/// bundle.
 pub fn extract_embedded_bundle() -> miette::Result<Option<PathBuf>> {
-    let bundle = config::EMBEDDED_BUNDLE;
-    if bundle.is_empty() {
+    let Some(bundle) = config::embedded_bundle() else {
         return Ok(None);
-    }
+    };
 
     let tmp_dir = tempfile::Builder::new()
-        .prefix(&format!("{}-bundle-", crate::policy::EMBEDDED_COMMAND_NAME))
+        .prefix(&format!(
+            "{}-bundle-",
+            crate::policy::embedded_command_name()
+        ))
         .tempdir()
         .into_diagnostic()
         .context("failed to create temp dir for embedded bundle")?;
 
-    let decoder = zstd::Decoder::new(bundle)
+    bundle
+        .verify()
+        .into_diagnostic()
+        .context("failed to verify embedded bundle")?;
+    let decoder = zstd::Decoder::new(bundle.open().into_diagnostic()?)
         .into_diagnostic()
         .context("failed to decompress embedded bundle")?;
     let mut archive = tar::Archive::new(decoder);

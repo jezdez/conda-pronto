@@ -2,7 +2,6 @@
 
 use std::env;
 
-use clap::Parser;
 use miette::IntoDiagnostic;
 
 mod cli;
@@ -11,6 +10,7 @@ mod config;
 mod exec;
 mod install;
 mod policy;
+mod runtime_data;
 
 use cli::{Cli, Command, LockSource};
 use commands::{
@@ -48,7 +48,7 @@ async fn async_main() -> miette::Result<()> {
         }
         Some("bootstrap") | Some("status") | Some("shell") | Some("uninstall") | Some("help")
         | Some("--help") | Some("-h") | Some("--version") | Some("-V") | None => {
-            let cli = Cli::parse();
+            let cli = Cli::parse_runtime();
             let verbosity = cli.verbosity();
             match cli.command {
                 Some(Command::Bootstrap {
@@ -71,13 +71,13 @@ async fn async_main() -> miette::Result<()> {
                     };
 
                     let bundle = bundle.or_else(|| {
-                        env::var(policy::BUNDLE_ENV_VAR)
+                        env::var(policy::bundle_env_var())
                             .ok()
                             .filter(|v| !v.is_empty())
                             .map(std::path::PathBuf::from)
                     });
                     let offline = offline
-                        || env::var(policy::OFFLINE_ENV_VAR)
+                        || env::var(policy::offline_env_var())
                             .ok()
                             .filter(|v| !v.is_empty())
                             .is_some_and(|v| v != "0" && v.to_lowercase() != "false");
@@ -120,7 +120,7 @@ async fn async_main() -> miette::Result<()> {
                     return exec::replace_process_with_conda(&prefix, &conda_args);
                 }
                 Some(Command::Help) => {
-                    Cli::parse_from([policy::COMMAND_NAME, "--help"]);
+                    Cli::parse_runtime_from([policy::command_name(), "--help"]);
                 }
                 None => {
                     let prefix = policy::default_prefix()?;
@@ -128,7 +128,7 @@ async fn async_main() -> miette::Result<()> {
                         eprintln!(
                             "{} No conda installation found. Run `{} bootstrap` first.",
                             console::style("!").yellow().bold(),
-                            policy::COMMAND_NAME
+                            policy::command_name()
                         );
                         std::process::exit(1);
                     }

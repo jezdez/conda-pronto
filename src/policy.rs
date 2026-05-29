@@ -1,29 +1,55 @@
 //! Runtime distribution policy.
 //!
-//! The install/runtime code is generic. Values in this module are embedded by
-//! the builder for each generated distribution.
+//! The install/runtime code is generic. Values in this module come from the
+//! runtime data block stamped onto each generated distribution artifact.
 
 use std::path::PathBuf;
 
-pub(crate) const COMMAND_NAME: &str = env!("PRONTO_RUNTIME_NAME");
-pub(crate) const EMBEDDED_COMMAND_NAME: &str = env!("PRONTO_RUNTIME_EMBEDDED_NAME");
-pub(crate) const DISPLAY_NAME: &str = env!("PRONTO_RUNTIME_DISPLAY_NAME");
-pub(crate) const DEFAULT_PREFIX_DIR: &str = env!("PRONTO_RUNTIME_PREFIX_DIR");
-pub(crate) const METADATA_FILE: &str = env!("PRONTO_RUNTIME_METADATA_FILE");
-pub(crate) const BUNDLE_ENV_VAR: &str = env!("PRONTO_RUNTIME_BUNDLE_ENV_VAR");
-pub(crate) const OFFLINE_ENV_VAR: &str = env!("PRONTO_RUNTIME_OFFLINE_ENV_VAR");
+use crate::runtime_data;
+
+pub(crate) fn command_name() -> &'static str {
+    &runtime_data::current().header.command_name
+}
+
+pub(crate) fn embedded_command_name() -> &'static str {
+    &runtime_data::current().header.embedded_command_name
+}
+
+pub(crate) fn display_name() -> &'static str {
+    &runtime_data::current().header.display_name
+}
+
+pub(crate) fn default_prefix_dir() -> &'static str {
+    &runtime_data::current().header.default_prefix_dir
+}
+
+pub(crate) fn metadata_file() -> &'static str {
+    &runtime_data::current().header.metadata_file
+}
+
+pub(crate) fn bundle_env_var() -> &'static str {
+    &runtime_data::current().header.bundle_env_var
+}
+
+pub(crate) fn offline_env_var() -> &'static str {
+    &runtime_data::current().header.offline_env_var
+}
+
+pub(crate) fn docs_url() -> &'static str {
+    &runtime_data::current().header.docs_url
+}
 
 pub(crate) fn default_prefix() -> miette::Result<PathBuf> {
     let home =
         dirs::home_dir().ok_or_else(|| miette::miette!("could not determine home directory"))?;
-    Ok(home.join(DEFAULT_PREFIX_DIR))
+    Ok(home.join(default_prefix_dir()))
 }
 
-pub(crate) fn status_binary_name(embedded_bundle: &[u8]) -> &'static str {
-    if embedded_bundle.is_empty() {
-        COMMAND_NAME
+pub(crate) fn status_binary_name(has_embedded_bundle: bool) -> &'static str {
+    if has_embedded_bundle {
+        embedded_command_name()
     } else {
-        EMBEDDED_COMMAND_NAME
+        command_name()
     }
 }
 
@@ -33,7 +59,7 @@ pub(crate) fn frozen_message() -> String {
 Create a new environment instead: conda create -n myenv\n\
 To re-bootstrap: {command} bootstrap --force\n\
 To override: pass --override-frozen-env",
-        display = DISPLAY_NAME,
-        command = COMMAND_NAME
+        display = display_name(),
+        command = command_name()
     )
 }
