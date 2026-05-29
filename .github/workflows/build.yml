@@ -13,10 +13,10 @@ on:
         type: string
         default: "project"
       layout:
-        description: "Artifact layout to build: none or embedded."
+        description: "Artifact layout to build: default or embedded."
         required: false
         type: string
-        default: "none"
+        default: "default"
       docs-url:
         description: "Documentation URL embedded in the runtime help output."
         required: false

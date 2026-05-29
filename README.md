@@ -12,7 +12,7 @@ and installer wrappers.
 
 Artifact layouts:
 
-- `none`: `<name>` with stamped lock/metadata; packages are downloaded during bootstrap.
+- `default`: `<name>` with stamped lock/metadata; packages are downloaded during bootstrap.
 - `external`: `<name>` plus `<name>.bundle.tar.zst`.
 - `embedded`: `<name>z`, the runtime plus compressed bundle embedded in one binary.
 
@@ -23,7 +23,7 @@ developing conda-pronto itself:
 ```bash
 pronto lock
 pronto inspect
-pronto build --layout none --name serpe --template ./pronto-runtime-template
+pronto build --layout default --name serpe --template ./pronto-runtime-template
 pronto build --layout embedded --name serpe --template ./pronto-runtime-template
 pronto run --name serpe -- bootstrap --prefix /tmp/serpe-smoke
 ```
@@ -48,9 +48,6 @@ defaults belong in downstream distributions.
 conda-pronto project metadata. `pixi.toml` plus `pixi.lock` and Pixi's
 `pyproject.toml` plus `pixi.lock` remain supported for Pixi-compatible
 workflows.
-
-Historical builder release notes from `conda-express` live in
-[CHANGELOG.md](CHANGELOG.md).
 
 `pronto` is not an OS installer generator and does not target `.sh`, `.pkg`, or
 `.msi` output. It produces bootstrap binaries that can be distributed directly

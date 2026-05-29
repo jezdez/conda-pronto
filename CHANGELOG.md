@@ -34,6 +34,7 @@ subcommand for conda installations that want plugin-style integration.
 - `conda-pronto` no longer behaves like a downstream distribution. Downstream
   projects choose their own binary name, package set, channels, documentation
   URL, and release channel.
+- The network-bootstrap artifact layout is named `default` instead of `none`.
 - Generated runtime `.condarc` files now use the channels stamped into the
   runtime instead of assuming `conda-forge`.
 - Runtime `--channel` and `--package` flags are now accepted only for live

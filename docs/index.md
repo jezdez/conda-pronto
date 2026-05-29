@@ -19,7 +19,7 @@ artifacts, and the generated runtime command:
 
 ```bash
 pronto lock
-pronto build --layout none --name serpe
+pronto build --layout default --name serpe
 pronto run --name serpe -- bootstrap --prefix /tmp/serpe
 ```
 

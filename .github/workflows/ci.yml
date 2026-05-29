@@ -89,7 +89,7 @@ jobs:
             template="${template}.exe"
           fi
           "$pronto" build \
-            --layout none \
+            --layout default \
             --name demo \
             --target "$TARGET" \
             --target-label "$TARGET" \

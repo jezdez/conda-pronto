@@ -16,9 +16,9 @@ inputs:
     required: false
     default: "."
   layout:
-    description: "Artifact layout to build: none or embedded."
+    description: "Artifact layout to build: default or embedded."
     required: false
-    default: "none"
+    default: "default"
   docs-url:
     description: "Documentation URL embedded in the runtime help output."
     required: false
@@ -202,10 +202,10 @@ runs:
           exit 1
         fi
         case "$PRONTO_LAYOUT" in
-          none|embedded)
+          default|embedded)
             ;;
           *)
-            echo "Unsupported layout: ${PRONTO_LAYOUT}. Use 'none' or 'embedded'." >&2
+            echo "Unsupported layout: ${PRONTO_LAYOUT}. Use 'default' or 'embedded'." >&2
             exit 1
             ;;
         esac

@@ -72,7 +72,7 @@ with an ASCII letter or digit and may only contain ASCII letters, digits, `.`,
 Options:
 
 - `--name NAME`: required distribution binary name.
-- `--layout none`: stage a network bootstrap binary.
+- `--layout default`: stage a network bootstrap binary.
 - `--layout external`: stage a runtime plus compressed bundle.
 - `--layout embedded`: stage a runtime with the compressed bundle embedded.
 - `--target-label LABEL`: append a platform or target label to artifact names.
@@ -101,7 +101,7 @@ Everything after `--` is passed to the staged runtime.
 Options:
 
 - `--name NAME`: required distribution binary name.
-- `--layout none`: stage a network bootstrap binary.
+- `--layout default`: stage a network bootstrap binary.
 - `--layout external`: stage a runtime plus compressed bundle.
 - `--layout embedded`: stage a runtime with the compressed bundle embedded.
 - `--platform PLATFORM`: choose the conda platform for metadata and bundles.

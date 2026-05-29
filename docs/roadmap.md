@@ -9,7 +9,7 @@ The builder CLI covers the core local workflow:
   environment
 - `pronto inspect`: summarize the package set for a target platform
 - `pronto bundle`: download package archives into a compressed bundle
-- `pronto build`: stage `none`, `external`, or `embedded` artifacts
+- `pronto build`: stage `default`, `external`, or `embedded` artifacts
 - `pronto run`: build and execute a local artifact for smoke testing
 
 Every staged build writes the binary plus artifact metadata: the runtime lock,

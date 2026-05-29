@@ -34,8 +34,8 @@ in CI.
   or `pyproject.toml`/`pixi.lock`. Defaults to the workflow workspace.
 
 `layout`
-: Artifact layout to build. Supported values are `none` and `embedded`.
-  Defaults to `none`. Embedded artifacts carry package archives inside the
+: Artifact layout to build. Supported values are `default` and `embedded`.
+  Defaults to `default`. Embedded artifacts carry package archives inside the
   runtime binary and use the `z` suffix.
 
 `docs-url`

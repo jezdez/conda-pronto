@@ -8,7 +8,7 @@ workflows run after conda-pronto writes these files.
 
 | Layout | Binary name | Bundle file | Network during bootstrap |
 | --- | --- | --- | --- |
-| `none` | `NAME` | none | yes |
+| `default` | `NAME` | none | yes |
 | `external` | `NAME` | `NAME.bundle.tar.zst` | optional |
 | `embedded` | `NAMEz` | embedded in binary | no |
 
@@ -16,7 +16,7 @@ On Windows, binary filenames also include `.exe`.
 
 ## Metadata Files
 
-For a `none` build named `serpe`, conda-pronto stages:
+For a `default` build named `serpe`, conda-pronto stages:
 
 - `serpe` or `serpe.exe`
 - `serpe.runtime.lock`
