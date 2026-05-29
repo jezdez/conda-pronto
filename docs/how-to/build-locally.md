@@ -7,7 +7,7 @@ Installed local builds use a prebuilt runtime template:
 
 ```bash
 pronto build \
-  --layout default \
+  --layout online \
   --name serpe \
   --template ./pronto-runtime-template
 ```
@@ -56,7 +56,7 @@ pronto lock --check
 
 ```bash
 pronto build \
-  --layout default \
+  --layout online \
   --name serpe \
   --template ./pronto-runtime-template
 ```
@@ -65,7 +65,7 @@ Use `--out-dir` to stage somewhere other than `dist/`:
 
 ```bash
 pronto build \
-  --layout default \
+  --layout online \
   --name serpe \
   --template ./pronto-runtime-template \
   --out-dir /tmp/pronto-artifacts

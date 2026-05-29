@@ -39,7 +39,7 @@ conda-pronto owns the reusable build and runtime machinery:
 - pruning excluded packages and exclusive dependencies after the solve
 - downloading package archives into compressed bundles
 - copying or building the generic runtime template and stamping distribution data
-- staging `default`, `external`, and `embedded` artifact layouts
+- staging `online`, `external`, and `embedded` artifact layouts
 - writing artifact metadata: `.runtime.lock`, `.packages.txt`, `.info.json`,
   and `.sha256`
 - exposing the composite GitHub Action and local builder CLI

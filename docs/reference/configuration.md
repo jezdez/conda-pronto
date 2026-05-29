@@ -106,7 +106,7 @@ packages = [
 
 `pronto build --name NAME` stamps these runtime values onto the staged binary:
 
-- command name: `NAME` for `default` and `external`, `NAME` plus `z` for
+- command name: `NAME` for `online` and `external`, `NAME` plus `z` for
   `embedded`
 - display name: `NAME`
 - default prefix: `~/.NAME`

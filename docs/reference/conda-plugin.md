@@ -8,7 +8,7 @@ It registers a `conda pronto` subcommand that delegates to the primary
 ```bash
 conda pronto lock
 conda pronto inspect
-conda pronto build --layout default --name serpe --template ./pronto-runtime-template
+conda pronto build --layout online --name serpe --template ./pronto-runtime-template
 ```
 
 The plugin does not reimplement the builder in Python and it does not make

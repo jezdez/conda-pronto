@@ -44,7 +44,7 @@ Build a binary that contains lockfile metadata but downloads package archives
 during bootstrap:
 
 ```bash
-pronto build --layout default --name serpe
+pronto build --layout online --name serpe
 ```
 
 The staged files are written to `dist/`. The binary is named `serpe` on Unix

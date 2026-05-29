@@ -12,7 +12,7 @@ and installer wrappers.
 
 Artifact layouts:
 
-- `default`: `<name>` with stamped lock/metadata; packages are downloaded during bootstrap.
+- `online`: `<name>` with stamped lock/metadata; packages are downloaded during bootstrap.
 - `external`: `<name>` plus `<name>.bundle.tar.zst`.
 - `embedded`: `<name>z`, the runtime plus compressed bundle embedded in one binary.
 
@@ -23,7 +23,7 @@ developing conda-pronto itself:
 ```bash
 pronto lock
 pronto inspect
-pronto build --layout default --name serpe --template ./pronto-runtime-template
+pronto build --layout online --name serpe --template ./pronto-runtime-template
 pronto build --layout embedded --name serpe --template ./pronto-runtime-template
 pronto run --name serpe -- bootstrap --prefix /tmp/serpe-smoke
 ```

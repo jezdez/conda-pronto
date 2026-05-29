@@ -70,7 +70,7 @@ enum Command {
     /// Build and stage a ready-to-run artifact
     Build {
         /// Artifact layout to produce
-        #[arg(long, value_enum, default_value_t = BundleLayout::Default)]
+        #[arg(long, value_enum, default_value_t = BundleLayout::Online)]
         layout: BundleLayout,
 
         /// Distribution binary name to stage
@@ -109,7 +109,7 @@ enum Command {
     /// Build and run a staged artifact for local smoke testing
     Run {
         /// Artifact layout to produce before running
-        #[arg(long, value_enum, default_value_t = BundleLayout::Default)]
+        #[arg(long, value_enum, default_value_t = BundleLayout::Online)]
         layout: BundleLayout,
 
         /// Distribution binary name to stage
@@ -183,7 +183,7 @@ const BUNDLE_ARCHIVE_FILE: &str = "bundle.tar.zst";
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 enum BundleLayout {
     /// Binary contains lock/metadata; packages download during bootstrap.
-    Default,
+    Online,
     /// Binary is paired with a compressed package bundle.
     External,
     /// Binary contains the compressed package bundle.
@@ -193,7 +193,7 @@ enum BundleLayout {
 impl BundleLayout {
     fn as_str(self) -> &'static str {
         match self {
-            Self::Default => "default",
+            Self::Online => "online",
             Self::External => "external",
             Self::Embedded => "embedded",
         }

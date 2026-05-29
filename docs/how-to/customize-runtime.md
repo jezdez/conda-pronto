@@ -29,7 +29,7 @@ underscores. A runtime named `serpe` uses `SERPE_BUNDLE` and
 Use a product-specific name:
 
 ```bash
-pronto build --layout default --name serpe
+pronto build --layout online --name serpe
 ```
 
 Avoid publishing downstream builds as `cx` or `cxz`. In the conda ecosystem,
@@ -116,7 +116,7 @@ pronto lock
 Build the named runtime:
 
 ```bash
-pronto build --layout default --name serpe --template ./pronto-runtime-template
+pronto build --layout online --name serpe --template ./pronto-runtime-template
 ```
 
 The staged binary and metadata files are written to `dist/`.
