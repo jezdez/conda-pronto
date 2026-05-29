@@ -11,6 +11,7 @@ mod exec;
 mod install;
 mod policy;
 mod runtime_data;
+mod tls;
 
 use cli::{Cli, Command, LockSource};
 use commands::{
@@ -19,6 +20,8 @@ use commands::{
 };
 
 fn main() -> miette::Result<()> {
+    tls::install_default_provider();
+
     let num_cores = std::thread::available_parallelism()
         .map_or(2, std::num::NonZero::get)
         .max(2);

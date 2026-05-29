@@ -9,6 +9,8 @@ use sha2::{Digest, Sha256};
 
 #[path = "../runtime_data.rs"]
 mod runtime_data;
+#[path = "../tls.rs"]
+mod tls;
 
 #[derive(Clone, Default, serde::Deserialize)]
 struct ProjectManifest {
@@ -612,6 +614,7 @@ async fn download_and_bundle(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use futures::stream::{self, StreamExt};
 
+    tls::install_default_provider();
     let client = reqwest::Client::builder().no_gzip().build()?;
 
     let bundle_dir = bundle_path
@@ -1476,6 +1479,8 @@ fn pixi_dependency_from_matchspec(spec: &str) -> (String, String) {
 }
 
 fn main() {
+    tls::install_default_provider();
+
     let cli = Cli::parse();
     match cli.command {
         Command::Lock { check, root } => write_runtime_lock(check, root),

@@ -496,6 +496,8 @@ pub(crate) fn parse_specs(specs: &[String]) -> miette::Result<Vec<MatchSpec>> {
 }
 
 fn make_download_client() -> miette::Result<reqwest_middleware::ClientWithMiddleware> {
+    crate::tls::install_default_provider();
+
     let raw = reqwest::Client::builder()
         .no_gzip()
         .connect_timeout(Duration::from_secs(30))
