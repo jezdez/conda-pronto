@@ -68,11 +68,6 @@ jobs:
         with:
           cache: true
 
-      - name: Use pre-C23 C ABI for aws-lc-sys
-        if: runner.os == 'Linux'
-        shell: bash
-        run: echo "AWS_LC_SYS_TARGET_CFLAGS=-std=gnu17" >> "$GITHUB_ENV"
-
       - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
 
       - name: Build
@@ -161,11 +156,6 @@ jobs:
         with:
           cache: true
 
-      - name: Use pre-C23 C ABI for aws-lc-sys
-        if: runner.os == 'Linux'
-        shell: bash
-        run: echo "AWS_LC_SYS_TARGET_CFLAGS=-std=gnu17" >> "$GITHUB_ENV"
-
       - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
 
       - name: Generate coverage
@@ -205,11 +195,6 @@ jobs:
       - uses: prefix-dev/setup-pixi@1b2de7f3351f171c8b4dfeb558c639cb58ed4ec0 # v0.9.5
         with:
           cache: true
-
-      - name: Use pre-C23 C ABI for aws-lc-sys
-        if: runner.os == 'Linux'
-        shell: bash
-        run: echo "AWS_LC_SYS_TARGET_CFLAGS=-std=gnu17" >> "$GITHUB_ENV"
 
       - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
 
