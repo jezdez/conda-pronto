@@ -4,8 +4,8 @@ conda-pronto reads project intent from a conda-compatible manifest and concrete
 package records from the matching lockfile.
 
 The preferred manifest is `conda.toml` with `conda.lock`. `pixi.toml` with
-`pixi.lock` remains supported for compatibility with the original conda-pronto build
-workflow.
+`pixi.lock` and Pixi's `pyproject.toml` with `pixi.lock` remain supported for
+Pixi-compatible workflows.
 
 Downstream distributions maintain these values in their own project manifest.
 conda-pronto treats the values as build input; it does not define a universal
@@ -22,6 +22,7 @@ conda-pronto looks in the build root for:
 
 1. `conda.toml`
 2. `pixi.toml`
+3. `pyproject.toml` when it contains `[tool.pixi]` or `[tool.pronto]`
 
 The selected manifest determines the lockfile:
 
@@ -29,6 +30,7 @@ The selected manifest determines the lockfile:
 | --- | --- |
 | `conda.toml` | `conda.lock` |
 | `pixi.toml` | `pixi.lock` |
+| `pyproject.toml` with Pixi config | `pixi.lock` |
 
 `conda.lock` and `pixi.lock` are source lockfiles owned by their respective
 workspace tools. `target/pronto/runtime.lock` is generated build output owned
@@ -50,6 +52,9 @@ conda-spawn = ">=0.1.0"
 [environments]
 runtime = { features = ["runtime"], no-default-feature = true }
 ```
+
+In Pixi's `pyproject.toml` layout, the same Pixi sections live below
+`[tool.pixi]`, for example `[tool.pixi.feature.runtime.dependencies]`.
 
 ## `[tool.pronto]`
 
@@ -92,8 +97,10 @@ packages = [
   Prefer conda workspace dependency sections for `conda.toml` projects.
 
 `channels`
-: Channels used when deriving the runtime lock and written into runtime
-  metadata. Prefer `[workspace].channels` for `conda.toml` projects.
+: Channels written into runtime metadata and the installed `.condarc` when the
+  lockfile environment does not provide channels. Prefer `[workspace].channels`
+  for `conda.toml` and `pixi.toml` projects, or `[tool.pixi.workspace].channels`
+  for Pixi `pyproject.toml` projects.
 
 ## Stamped Runtime Metadata
 

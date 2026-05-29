@@ -33,8 +33,8 @@ runtime lock, a tab-separated package list, an info JSON document, and SHA256
 checksums. The staged binary is stamped with the runtime lock, distribution
 metadata, and optional embedded bundle before checksums are written. The GitHub
 Action downloads tagged `pronto` and runtime-template release assets, verifies
-them with `SHA256SUMS`, and then uses the same stamping path against a committed
-downstream manifest and lockfile.
+their GitHub attestations and `SHA256SUMS`, and then uses the same stamping
+path against a committed downstream manifest and lockfile.
 
 The `conda-pronto` Python package in `python/conda_pronto` registers
 `conda pronto` as a conda plugin entry point. It delegates to the primary
@@ -45,8 +45,9 @@ Generic runtime behavior stays here; opinionated package sets and distribution
 defaults belong in downstream distributions.
 
 `conda.toml` plus `conda.lock` is the preferred manifest/lockfile pair for new
-conda-pronto project metadata. `pixi.toml` plus `pixi.lock` remains supported
-for the Pixi-compatible workflow.
+conda-pronto project metadata. `pixi.toml` plus `pixi.lock` and Pixi's
+`pyproject.toml` plus `pixi.lock` remain supported for Pixi-compatible
+workflows.
 
 Historical builder release notes from `conda-express` live in
 [CHANGELOG.md](CHANGELOG.md).

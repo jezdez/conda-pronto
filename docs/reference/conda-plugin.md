@@ -20,7 +20,8 @@ checkouts can omit that option while developing conda-pronto itself.
 
 ## Packaging Contract
 
-`conda-pronto` expects a `pronto` executable on `PATH`.
+`conda-pronto` first looks for a `pronto` executable next to the current Python
+interpreter, then falls back to `PATH`.
 
 A conda package must install both pieces into the same environment:
 

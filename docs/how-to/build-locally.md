@@ -36,7 +36,8 @@ conda workspace lock
 pronto lock
 ```
 
-For Pixi-compatible builds, use Pixi to refresh the source lockfile:
+For Pixi-compatible builds, including Pixi config in `pyproject.toml`, use
+Pixi to refresh the source lockfile:
 
 ```bash
 pixi lock

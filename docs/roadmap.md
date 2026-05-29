@@ -29,7 +29,8 @@ builds:
 
 - `conda.toml` is the primary manifest.
 - `conda.lock` is the primary source lockfile.
-- `pixi.toml` and `pixi.lock` remain compatibility inputs.
+- `pixi.toml`/`pixi.lock` and Pixi's `pyproject.toml`/`pixi.lock` remain
+  compatibility inputs.
 - `[tool.pronto].environment` chooses which solved environment becomes the
   runtime.
 - `[tool.pronto].exclude` records post-solve pruning policy.

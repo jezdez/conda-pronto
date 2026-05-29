@@ -9,13 +9,17 @@ manifest and lockfile. The action reads that project input and stamps a named
 runtime artifact instead of carrying a copy of the generic builder.
 
 Pin the action to a conda-pronto release tag. The action downloads the matching
-`pronto` and `pronto-runtime-template` release assets, verifies them against the
-release `SHA256SUMS`, and stamps the generated runtime artifact.
+`pronto` and `pronto-runtime-template` release assets, verifies their GitHub
+artifact attestations and release `SHA256SUMS`, and stamps the generated
+runtime artifact.
+
+GitHub-hosted runners already include the GitHub CLI used for attestation
+verification. Self-hosted runners must provide `gh`.
 
 ## Single-Platform Example
 
-The checked-out repository must contain either `conda.toml` plus `conda.lock`
-or `pixi.toml` plus `pixi.lock`.
+The checked-out repository must contain `conda.toml` plus `conda.lock`,
+`pixi.toml` plus `pixi.lock`, or Pixi's `pyproject.toml` plus `pixi.lock`.
 
 ```yaml
 jobs:

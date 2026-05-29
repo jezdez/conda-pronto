@@ -4,13 +4,16 @@ The repository root provides a composite GitHub Action for downstream
 distribution repositories.
 
 The action downloads the tagged conda-pronto release assets for the current
-runner, verifies them against `SHA256SUMS`, and runs the downloaded `pronto`
-binary. It does not build conda-pronto from source.
+runner, verifies their GitHub artifact attestations and `SHA256SUMS`, and runs
+the downloaded `pronto` binary. It does not build conda-pronto from source.
+Self-hosted runners must provide the GitHub CLI because attestation
+verification uses `gh attestation verify`.
 
 The action builds only from committed project input. The selected root must
-contain `conda.toml` plus `conda.lock` or `pixi.toml` plus `pixi.lock`. When the
-manifest or matching lockfile is missing, the action fails instead of generating
-or solving project configuration in CI.
+contain `conda.toml` plus `conda.lock`, `pixi.toml` plus `pixi.lock`, or Pixi's
+`pyproject.toml` plus `pixi.lock`. When the manifest or matching lockfile is
+missing, the action fails instead of generating or solving project configuration
+in CI.
 
 ```yaml
 - uses: actions/checkout@v4
@@ -27,8 +30,8 @@ or solving project configuration in CI.
 : Required distribution binary name. For example, conda-express passes `cx`.
 
 `root`
-: Project root containing `conda.toml`/`conda.lock` or `pixi.toml`/`pixi.lock`.
-  Defaults to the workflow workspace.
+: Project root containing `conda.toml`/`conda.lock`, `pixi.toml`/`pixi.lock`,
+  or `pyproject.toml`/`pixi.lock`. Defaults to the workflow workspace.
 
 `layout`
 : Artifact layout to build. Supported values are `none` and `embedded`.

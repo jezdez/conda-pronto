@@ -1,7 +1,7 @@
 # Manifests And Plugin Entry Points
 
-conda-pronto supports a conda-native manifest path and keeps Pixi compatibility for
-existing builder workflows.
+conda-pronto supports a conda-native manifest path and keeps Pixi compatibility
+for existing builder workflows.
 
 conda-pronto is not an environment manager. It consumes a solved conda environment
 and turns it into bootstrap binaries.
@@ -9,15 +9,18 @@ and turns it into bootstrap binaries.
 ## Manifest Priority
 
 conda-pronto treats `conda.toml` as the preferred project manifest. `pixi.toml`
-remains a compatibility input for existing Pixi-based downstream workflows.
+and Pixi's `pyproject.toml` layout remain compatibility inputs for existing
+Pixi-based downstream workflows.
 
 Inside a build root, conda-pronto looks for manifests in this order:
 
 1. `conda.toml`
 2. `pixi.toml`
+3. `pyproject.toml` when it contains `[tool.pixi]` or `[tool.pronto]`
 
 When `conda.toml` is selected, conda-pronto reads package records from `conda.lock`.
-When `pixi.toml` is selected, it reads package records from `pixi.lock`.
+When `pixi.toml` or Pixi's `pyproject.toml` is selected, it reads package
+records from `pixi.lock`.
 
 The lockfile remains the source of concrete package records. If the selected
 lockfile is missing, create it with the tool that owns the manifest, then run
@@ -77,6 +80,11 @@ manifest is available. The older `[tool.pronto].packages` and
 `[tool.pronto].channels` fields remain compatibility metadata for the
 Pixi-oriented workflow and for runtime status output.
 
+For Pixi projects that keep Pixi config in `pyproject.toml`, use Pixi's
+`[tool.pixi.*]` table names, such as `[tool.pixi.workspace]` and
+`[tool.pixi.feature.runtime.dependencies]`. `[tool.pronto]` remains a separate
+tool table because it configures conda-pronto, not Pixi.
+
 ## CLI And Plugin Entry Points
 
 The `conda-pronto` Python package exposes the same builder through
@@ -90,10 +98,11 @@ The `conda-pronto` Python package exposes the same builder through
 The plugin entry point is for conda CLI discovery. The builder identity remains
 `pronto`, and downstream distributions still own the binaries they publish.
 
-The plugin package expects the `pronto` executable to be available on `PATH`.
-Conda recipes for `conda-pronto` package the Rust-built `pronto` binary and
-the Python plugin in the same environment. For adapter tests or custom
-packaging, `CONDA_PRONTO_EXECUTABLE` points at a specific executable.
+The plugin package first looks for the `pronto` executable next to the current
+Python interpreter, then falls back to `PATH`. Conda recipes for
+`conda-pronto` package the Rust-built `pronto` binary and the Python plugin in
+the same environment. For adapter tests or custom packaging,
+`CONDA_PRONTO_EXECUTABLE` points at a specific executable.
 
 ## Runtime Template Boundary
 

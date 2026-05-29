@@ -88,7 +88,9 @@ pronto lock
 ```
 
 For Pixi-compatible projects, `pronto configure` rewrites the runtime package
-intent in the selected manifest:
+intent in the selected manifest. With Pixi config in `pyproject.toml`, it writes
+Pixi sections under `[tool.pixi]` and keeps conda-pronto policy under
+`[tool.pronto]`:
 
 ```bash
 pronto configure \

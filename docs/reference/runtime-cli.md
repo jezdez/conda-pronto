@@ -37,7 +37,8 @@ Options:
 : Install into a custom prefix instead of the distribution default, `~/.NAME`.
 
 `-c, --channel CH`
-: Add a channel for a live solve. Can be passed multiple times.
+: Add a channel for a live solve. Can be passed multiple times. Use with
+  `--no-lock`; locked bootstraps use the channels recorded in the runtime lock.
 
 `-p, --package SPEC`
 : Add a package spec for a live solve. Can be passed multiple times. Use with

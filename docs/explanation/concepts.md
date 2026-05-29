@@ -12,9 +12,10 @@ them.
 
 ## Builder
 
-The `pronto` CLI is the builder. It reads `conda.toml`/`conda.lock` or the
-compatible `pixi.toml`/`pixi.lock` pair, applies `[tool.pronto]`, then derives
-a runtime lock, bundle files, runtime binaries, and artifact metadata.
+The `pronto` CLI is the builder. It reads `conda.toml`/`conda.lock`, the
+compatible `pixi.toml`/`pixi.lock` pair, or Pixi's `pyproject.toml` with
+`pixi.lock`, applies `[tool.pronto]`, then derives a runtime lock, bundle
+files, runtime binaries, and artifact metadata.
 
 The selected source lockfile is the source of the concrete conda package
 records. conda-pronto is not a replacement for conda-workspaces, Pixi, or any other
