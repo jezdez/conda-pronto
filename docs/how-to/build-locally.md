@@ -107,3 +107,24 @@ Use the public name of the distribution you are building. For example,
 conda-express uses `cx` for its network-bootstrap artifact and `cxz` for its
 embedded-bundle artifact. A different distribution uses a different
 `--name`.
+
+## Run Release Checks
+
+Before publishing a conda-pronto release, run the same local checks used for
+the release pass:
+
+```bash
+pixi run test
+pixi run lint
+pixi run -e test pytest
+pixi run -e test ruff-check
+pixi run -e test ruff-format-check
+pixi run docs
+cargo audit --deny warnings
+cargo deny check
+zizmor --persona auditor .
+```
+
+`cargo deny check` enforces the repository's Rust advisory, license, dependency
+ban, and source policies. Duplicate dependency versions are warnings for now
+because the rattler dependency graph still contains expected overlap.

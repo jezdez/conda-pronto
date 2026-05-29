@@ -19,6 +19,10 @@ subcommand form.
   named downstream runtime binaries.
 - Added a release workflow that publishes tagged `pronto` and
   `pronto-runtime-template` assets plus `SHA256SUMS` for the action to consume.
+- Added support for Pixi projects that keep Pixi configuration in
+  `pyproject.toml` with a committed `pixi.lock`.
+- Added a `cargo deny` policy for Rust advisories, license checks, dependency
+  bans, and source restrictions.
 - Documented the split between `conda-pronto` as the generic builder/runtime and
   downstream distributions such as `conda-express`.
 
@@ -31,8 +35,16 @@ subcommand form.
   `pronto` and runtime-template binaries instead of rebuilding the generic
   runtime from a Rust source checkout.
 - Simplified the GitHub Action interface so release builds consume committed
-  `conda.toml`/`conda.lock` or `pixi.toml`/`pixi.lock` input instead of
-  generating or mutating manifests in CI.
+  `conda.toml`/`conda.lock`, `pixi.toml`/`pixi.lock`, or
+  `pyproject.toml`/`pixi.lock` input instead of generating or mutating
+  manifests in CI.
+- Changed generated runtime `.condarc` files to use the stamped runtime
+  channels instead of hard-coding `conda-forge`.
+- Changed runtime bootstrap validation so `--channel` and `--package` are only
+  accepted for live solves with `--no-lock`.
+- Changed the `conda pronto` plugin adapter to prefer the `pronto` executable
+  installed next to the current Python interpreter before falling back to
+  `PATH`.
 - Updated the rattler dependency stack so current Pixi lockfiles can be read
   directly.
 - Removed default runtime examples from the documentation landing page so the
@@ -47,6 +59,9 @@ subcommand form.
 - Verify cached and newly downloaded bundle archives before staging them.
 - Verify offline bundle archives before installing from a local bundle
   directory, and reject tampered packages.
+- Verify GitHub artifact attestations for downloaded `pronto`,
+  `pronto-runtime-template`, and `SHA256SUMS` assets before the composite action
+  runs them.
 - Hardened GitHub workflows and the composite action by pinning actions by SHA,
   using minimal permissions, disabling persisted checkout credentials, avoiding
   `eval` for action inputs, and gating Codecov token access.
@@ -60,7 +75,8 @@ subcommand form.
 - `pixi run -e test ruff-check`
 - `pixi run -e test ruff-format-check`
 - `pixi run -e docs docs`
-- `cargo audit`
+- `cargo audit --deny warnings`
+- `cargo deny check`
 - `zizmor --persona auditor`
 
 ## Split from conda-express (2026-05-28)
