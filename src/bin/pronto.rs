@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -388,23 +389,28 @@ fn write_generated_runtime_lock(path: &Path, content: &str) {
 }
 
 fn parse_lock(lock_content: &str, lock_path: &Path) -> LockFile {
-    let normalized_lock;
-    let lock_content = if lock_content.starts_with("version: 7\n") {
+    let lock_content = normalize_lock_schema_version(lock_content);
+
+    LockFile::from_str(lock_content.as_ref())
+        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", lock_path.display()))
+}
+
+fn normalize_lock_schema_version(lock_content: &str) -> Cow<'_, str> {
+    if let Some(rest) = lock_content.strip_prefix("version: 7\r\n") {
         // Pixi lock v7 is backwards-compatible with rattler_lock's v6 parser
         // for the conda package data `pronto lock` consumes.
-        normalized_lock = lock_content.replacen("version: 7\n", "version: 6\n", 1);
-        normalized_lock.as_str()
-    } else if lock_content.starts_with("version: 1\n") {
+        Cow::Owned(format!("version: 6\r\n{rest}"))
+    } else if let Some(rest) = lock_content.strip_prefix("version: 7\n") {
+        Cow::Owned(format!("version: 6\n{rest}"))
+    } else if let Some(rest) = lock_content.strip_prefix("version: 1\r\n") {
         // conda-workspaces writes the rattler-lock schema with a conda-facing
         // on-disk version. The conda package records are compatible here.
-        normalized_lock = lock_content.replacen("version: 1\n", "version: 6\n", 1);
-        normalized_lock.as_str()
+        Cow::Owned(format!("version: 6\r\n{rest}"))
+    } else if let Some(rest) = lock_content.strip_prefix("version: 1\n") {
+        Cow::Owned(format!("version: 6\n{rest}"))
     } else {
-        lock_content
-    };
-
-    LockFile::from_str(lock_content)
-        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", lock_path.display()))
+        Cow::Borrowed(lock_content)
+    }
 }
 
 /// Remove explicitly excluded packages and any transitive dependencies that
@@ -1369,6 +1375,42 @@ mod tests {
                 .unwrap(),
             channel: Some("test".to_string()),
         })
+    }
+
+    #[test]
+    fn test_normalize_pixi_lock_v7_lf_header() {
+        let lock = "version: 7\nplatforms: []\n";
+        assert_eq!(
+            normalize_lock_schema_version(lock).as_ref(),
+            "version: 6\nplatforms: []\n"
+        );
+    }
+
+    #[test]
+    fn test_normalize_pixi_lock_v7_crlf_header() {
+        let lock = "version: 7\r\nplatforms: []\r\n";
+        assert_eq!(
+            normalize_lock_schema_version(lock).as_ref(),
+            "version: 6\r\nplatforms: []\r\n"
+        );
+    }
+
+    #[test]
+    fn test_normalize_conda_lock_v1_crlf_header() {
+        let lock = "version: 1\r\nplatforms: []\r\n";
+        assert_eq!(
+            normalize_lock_schema_version(lock).as_ref(),
+            "version: 6\r\nplatforms: []\r\n"
+        );
+    }
+
+    #[test]
+    fn test_normalize_leaves_supported_header_unchanged() {
+        let lock = "version: 6\nplatforms: []\n";
+        assert!(matches!(
+            normalize_lock_schema_version(lock),
+            std::borrow::Cow::Borrowed(_)
+        ));
     }
 
     #[test]
