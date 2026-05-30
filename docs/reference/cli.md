@@ -5,8 +5,8 @@ The `pronto` CLI builds and stages named conda bootstrap runtimes.
 This page covers the builder CLI. For the command surface exposed by generated
 runtime binaries, see {doc}`runtime-cli`.
 
-The `conda-pronto` package also registers `conda pronto` as an adapter that
-delegates to this CLI. See {doc}`conda-plugin`.
+The `conda-pronto` package can also make `conda pronto` available as a
+conda-style shortcut for this CLI. See {doc}`conda-plugin`.
 
 Installed `pronto` builds use a prebuilt runtime template passed with
 `--template`. Source checkouts can omit that option while developing

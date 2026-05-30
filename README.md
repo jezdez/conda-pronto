@@ -36,10 +36,10 @@ Action downloads tagged `pronto` and runtime-template release assets, verifies
 their GitHub attestations and `SHA256SUMS`, and then uses the same stamping
 path against a committed downstream manifest and lockfile.
 
-The `conda-pronto` Python package in `python/conda_pronto` registers
-`conda pronto` as a conda plugin entry point. It delegates to the primary
-`pronto` executable, so conda packages install the Rust binary and the
-Python plugin together.
+Most users run the builder as `pronto`. The Python package can also make
+`conda pronto` available inside a conda environment; that command is a shortcut
+for the same `pronto` executable. Conda packages install the Rust binary and
+the small Python adapter together.
 
 Generic runtime behavior stays here; opinionated package sets and distribution
 defaults belong in downstream distributions.

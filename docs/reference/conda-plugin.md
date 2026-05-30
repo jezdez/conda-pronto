@@ -1,9 +1,10 @@
-# Conda Plugin Reference
+# `conda pronto` Reference
 
-The `conda-pronto` package provides a conda plugin entry point for conda-pronto.
+Most users run conda-pronto as `pronto`.
 
-It registers a `conda pronto` subcommand that delegates to the primary
-`pronto` executable:
+When `conda-pronto` is installed in a conda environment, it can also add a
+`conda pronto` command. This is only a conda-style shortcut for the same
+builder:
 
 ```bash
 conda pronto lock
@@ -11,14 +12,15 @@ conda pronto inspect
 conda pronto build --layout online --name serpe --template ./pronto-runtime-template
 ```
 
-The plugin does not reimplement the builder in Python and it does not make
-conda-pronto part of conda core.
+`conda pronto ...` runs the installed `pronto` executable with the same
+arguments. It is not a separate builder and it does not make conda-pronto part
+of conda itself.
 
-The plugin has the same build behavior as the standalone CLI. Installed builds
-pass `--template` to stamp a prebuilt generic runtime template; source
-checkouts can omit that option while developing conda-pronto itself.
+Installed builds pass `--template` to stamp a prebuilt generic runtime
+template; source checkouts can omit that option while developing conda-pronto
+itself.
 
-## Packaging Contract
+## Packaging Details
 
 `conda-pronto` first looks for a `pronto` executable next to the current Python
 interpreter, then falls back to `PATH`.
@@ -26,7 +28,7 @@ interpreter, then falls back to `PATH`.
 A conda package must install both pieces into the same environment:
 
 - the Rust-built `pronto` executable
-- the Python `conda_pronto` plugin package
+- the Python `conda_pronto` adapter package
 
 For custom packaging or tests, set `CONDA_PRONTO_EXECUTABLE` to an explicit
 executable path.

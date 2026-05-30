@@ -85,23 +85,24 @@ For Pixi projects that keep Pixi config in `pyproject.toml`, use Pixi's
 `[tool.pixi.feature.runtime.dependencies]`. `[tool.pronto]` remains a separate
 tool table because it configures conda-pronto, not Pixi.
 
-## CLI And Plugin Entry Points
+## CLI Entry Points
 
-The `conda-pronto` Python package exposes the same builder through
-`conda pronto`:
+`pronto ...` is the primary command. When `conda-pronto` is installed in a
+conda environment, `conda pronto ...` can also be available as a conda-style
+shortcut for the same builder:
 
 - `pronto ...` remains the primary CLI.
-- `conda pronto ...` dispatches to the `pronto` executable.
-- conda-pronto does not depend on being loaded as a conda plugin.
-- The plugin package does not make conda-pronto part of conda core.
+- `conda pronto ...` runs the installed `pronto` executable.
+- conda-pronto does not require this shortcut to work.
+- the shortcut does not make conda-pronto part of conda itself.
 
-The plugin entry point is for conda CLI discovery. The builder identity remains
-`pronto`, and downstream distributions still own the binaries they publish.
+The builder identity remains `pronto`, and downstream distributions still own
+the binaries they publish.
 
-The plugin package first looks for the `pronto` executable next to the current
+The Python adapter first looks for the `pronto` executable next to the current
 Python interpreter, then falls back to `PATH`. Conda recipes for
-`conda-pronto` package the Rust-built `pronto` binary and the Python plugin in
-the same environment. For adapter tests or custom packaging,
+`conda-pronto` package the Rust-built `pronto` binary and the adapter in the
+same environment. For adapter tests or custom packaging,
 `CONDA_PRONTO_EXECUTABLE` points at a specific executable.
 
 ## Runtime Template Boundary
