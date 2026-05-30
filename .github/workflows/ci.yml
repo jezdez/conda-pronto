@@ -90,7 +90,8 @@ jobs:
           fi
           "$cs" build \
             --layout online \
-            --command demo \
+            --runtime demo \
+            --delegate conda \
             --target "$TARGET" \
             --target-label "$TARGET" \
             --template "$template"
@@ -111,7 +112,8 @@ jobs:
         run: |
           ./target/release/cs build \
             --layout embedded \
-            --command demo \
+            --runtime demo \
+            --delegate conda \
             --target "$TARGET" \
             --target-label "$TARGET" \
             --template ./target/release/conda-ship-runtime

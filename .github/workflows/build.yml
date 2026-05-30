@@ -3,8 +3,13 @@ name: Build custom conda runtime
 on:
   workflow_call:
     inputs:
-      command:
-        description: "Runtime command name to build. Overrides [tool.conda-ship].command when set."
+      runtime:
+        description: "Runtime name to build. Overrides [tool.conda-ship].runtime when set."
+        required: false
+        type: string
+        default: ""
+      delegate:
+        description: "Delegate executable inside the managed prefix. Overrides [tool.conda-ship].delegate when set."
         required: false
         type: string
         default: ""
@@ -23,8 +28,8 @@ on:
         required: false
         type: string
         default: ""
-      scheme:
-        description: "Install scheme stamped into the runtime. Overrides [tool.conda-ship].scheme when set."
+      install-scheme:
+        description: "Install scheme stamped into the runtime. Overrides [tool.conda-ship].install-scheme when set."
         required: false
         type: string
         default: ""
@@ -90,11 +95,12 @@ jobs:
         id: cs
         uses: ./.conda-ship-action
         with:
-          command: ${{ inputs.command }}
+          runtime: ${{ inputs.runtime }}
+          delegate: ${{ inputs.delegate }}
           root: ${{ inputs.root }}
           layout: ${{ inputs.layout }}
           docs-url: ${{ inputs.docs-url }}
-          scheme: ${{ inputs.scheme }}
+          install-scheme: ${{ inputs.install-scheme }}
           install-name: ${{ inputs.install-name }}
 
       - name: Upload runtime artifacts

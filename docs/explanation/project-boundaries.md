@@ -19,7 +19,7 @@ metadata files.
 
 :::{grid-item-card} Downstream Distributions
 
-Package sets, command names, release channels, installer wrappers, and user
+Package sets, runtime names, delegate choices, release channels, installer wrappers, and user
 documentation.
 :::
 
@@ -39,14 +39,14 @@ conda-ship owns the reusable build and runtime machinery:
 - exposing the composite GitHub Action and local builder CLI
 
 The generated runtime behavior also lives here: `bootstrap`, `status`, `shell`,
-`uninstall`, pass-through to conda, offline bundle handling, embedded bundle
+`uninstall`, pass-through to the configured delegate, offline bundle handling, embedded bundle
 handling, and conda-spawn based activation.
 
 ## What Downstream Distributions Own
 
 Downstream projects decide what their users get:
 
-- command names
+- runtime names and delegate executables
 - package sets
 - channels
 - package exclusions
@@ -67,12 +67,12 @@ the same name.
 {external+conda-express:doc}`conda-express <index>` is the downstream
 distribution that publishes `cx` and `cxz`.
 
-It owns the opinionated native conda package set, the `cx`/`cxz` command names,
+It owns the opinionated native conda package set, the `cx`/`cxz` runtime names,
 Homebrew and shell-script installation, Docker images, Python or conda
 distribution wrappers, and release policy for those artifacts.
 
 When conda-express needs runtimes, its workflows call conda-ship from the
-conda-express project root and pass the `cx` command name. The `embedded`
+conda-express project root and pass the `cx` runtime name. The `embedded`
 layout stages `cxz`. The package set remains conda-express project input;
 conda-ship does not hard-code those choices. Its own scope page is
 {external+conda-express:doc}`Project scope <scope>`.
@@ -84,7 +84,7 @@ conda-ship complements other conda ecosystem tools:
 | Tool | Role |
 | --- | --- |
 | {external+conda-workspaces:doc}`conda-workspaces <index>` | Defines workspace manifests and lockfiles that conda-ship can consume |
-| Pixi | Solves and records compatible runtime environments that conda-ship can consume |
+| Pixi | Solves and records compatible source environments that conda-ship can consume |
 | rattler-build | Builds conda packages |
 | constructor | Builds OS installers |
 | conda-ship | Builds runtimes that can be distributed directly or wrapped by other channels |

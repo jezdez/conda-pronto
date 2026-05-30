@@ -29,7 +29,9 @@ struct ToolSection {
 #[serde(deny_unknown_fields)]
 struct ShipConfig {
     #[serde(default)]
-    command: Option<String>,
+    runtime: Option<String>,
+    #[serde(default)]
+    delegate: Option<String>,
     #[serde(default)]
     layout: Option<BundleLayout>,
     #[serde(default)]
@@ -38,8 +40,8 @@ struct ShipConfig {
     source_environment: Option<String>,
     #[serde(default, rename = "docs-url")]
     docs_url: Option<String>,
-    #[serde(default)]
-    scheme: Option<runtime_data::InstallScheme>,
+    #[serde(default, rename = "install-scheme")]
+    install_scheme: Option<runtime_data::InstallScheme>,
     #[serde(default, rename = "install-name")]
     install_name: Option<String>,
 }
@@ -49,8 +51,9 @@ struct RuntimeStampConfig {
     channels: Vec<String>,
     packages: Vec<String>,
     exclude: Vec<String>,
+    delegate: Option<String>,
     docs_url: Option<String>,
-    scheme: Option<runtime_data::InstallScheme>,
+    install_scheme: Option<runtime_data::InstallScheme>,
     install_name: Option<String>,
 }
 
@@ -84,9 +87,13 @@ enum Command {
         #[arg(long, value_enum)]
         layout: Option<BundleLayout>,
 
-        /// Command name to stage for the generated runtime
+        /// Runtime name to stage for the generated runtime
         #[arg(long)]
-        command: Option<String>,
+        runtime: Option<String>,
+
+        /// Delegate executable inside the managed prefix
+        #[arg(long)]
+        delegate: Option<String>,
 
         /// Optional target label appended to staged artifact names
         #[arg(long)]
@@ -109,8 +116,8 @@ enum Command {
         docs_url: Option<String>,
 
         /// Install scheme stamped into the generated runtime
-        #[arg(long, value_enum)]
-        scheme: Option<runtime_data::InstallScheme>,
+        #[arg(long = "install-scheme", value_enum)]
+        install_scheme: Option<runtime_data::InstallScheme>,
 
         /// Install name used inside the install scheme
         #[arg(long)]
@@ -135,9 +142,13 @@ enum Command {
         #[arg(long, value_enum)]
         layout: Option<BundleLayout>,
 
-        /// Command name to stage for the generated runtime
+        /// Runtime name to stage for the generated runtime
         #[arg(long)]
-        command: Option<String>,
+        runtime: Option<String>,
+
+        /// Delegate executable inside the managed prefix
+        #[arg(long)]
+        delegate: Option<String>,
 
         /// Conda platform to bundle/describe (default: current)
         #[arg(long)]
@@ -156,8 +167,8 @@ enum Command {
         docs_url: Option<String>,
 
         /// Install scheme stamped into the generated runtime
-        #[arg(long, value_enum)]
-        scheme: Option<runtime_data::InstallScheme>,
+        #[arg(long = "install-scheme", value_enum)]
+        install_scheme: Option<runtime_data::InstallScheme>,
 
         /// Install name used inside the install scheme
         #[arg(long)]
@@ -297,32 +308,19 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
 
     let lock_file = parse_lock(&lock_content, &input.lock_path);
 
-    let (source_environment, runtime_env) =
-        if let Some(source_environment) = input.config.source_environment.as_deref() {
-            (
-                source_environment.to_string(),
-                lock_file
-                    .environment(source_environment)
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "source environment {source_environment:?} not found in {}",
-                            input.lock_path.display()
-                        )
-                    }),
-            )
-        } else if let Some(environment) = lock_file.environment("runtime") {
-            ("runtime".to_string(), environment)
-        } else {
-            (
-                "default".to_string(),
-                lock_file.default_environment().unwrap_or_else(|| {
-                    panic!(
-                        "no runtime or default environment found in {}",
-                        input.lock_path.display()
-                    )
-                }),
-            )
-        };
+    let source_environment = input.config.source_environment.as_deref().unwrap_or_else(|| {
+        fatal_config_error(
+            "source environment is required; set [tool.conda-ship].source-environment to the solved environment to ship",
+        )
+    });
+    let runtime_env = lock_file
+        .environment(source_environment)
+        .unwrap_or_else(|| {
+            fatal_config_error(format!(
+                "source environment {source_environment:?} not found in {}",
+                input.lock_path.display()
+            ))
+        });
 
     let platform_data: Vec<_> = runtime_env
         .platforms()
@@ -388,13 +386,14 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
         input: input.clone(),
         lock_file: new_lock,
         content: new_content,
-        source_environment,
+        source_environment: source_environment.to_string(),
         runtime_config: RuntimeStampConfig {
             channels: runtime_channels,
             packages: runtime_packages,
             exclude: input.config.exclude,
+            delegate: input.config.delegate,
             docs_url: input.config.docs_url,
-            scheme: input.config.scheme,
+            install_scheme: input.config.install_scheme,
             install_name: input.config.install_name,
         },
         platforms,
@@ -417,7 +416,7 @@ fn validate_required_runtime_packages(platform: &str, packages: &[CondaPackageDa
 
     assert!(
         missing.is_empty(),
-        "runtime environment for {platform} is missing required package(s): {}\n  Add them to the selected source environment or choose another source-environment.",
+        "selected source environment for {platform} is missing required package(s): {}\n  Add them to source-environment or choose another source-environment.",
         missing.join(", ")
     );
 }
@@ -886,13 +885,14 @@ struct PackageInfo {
 #[allow(clippy::too_many_arguments)]
 fn dry_run_build_artifact(
     layout: Option<BundleLayout>,
-    command: Option<String>,
+    runtime: Option<String>,
+    delegate: Option<String>,
     target_label: Option<String>,
     platform_str: Option<String>,
     target: Option<String>,
     template: Option<PathBuf>,
     docs_url: Option<String>,
-    scheme: Option<runtime_data::InstallScheme>,
+    install_scheme: Option<runtime_data::InstallScheme>,
     install_name: Option<String>,
     out_dir: PathBuf,
     root_override: Option<PathBuf>,
@@ -907,14 +907,17 @@ fn dry_run_build_artifact(
     let platform = parse_platform(platform_str);
 
     let mut derived = derive_runtime_lock(&root);
-    let command = resolve_runtime_command(command, &derived.input.config);
+    let runtime = resolve_runtime_name(runtime, &derived.input.config);
+    let delegate = resolve_delegate(delegate, &derived.input.config);
     let layout = resolve_bundle_layout(layout, &derived.input.config);
-    validate_command_name(&command);
+    validate_runtime_name(&runtime);
+    validate_delegate(&delegate);
+    derived.runtime_config.delegate = Some(delegate.clone());
     if let Some(docs_url) = docs_url {
         derived.runtime_config.docs_url = Some(docs_url);
     }
-    apply_install_location_overrides(&mut derived.runtime_config, scheme, install_name);
-    validate_install_location_config(&derived.runtime_config, &command);
+    apply_install_location_overrides(&mut derived.runtime_config, install_scheme, install_name);
+    validate_install_location_config(&derived.runtime_config, &runtime);
 
     let runtime_lock_path = generated_runtime_lock_path(&root);
     let packages = packages_for_platform(&derived.lock_file, &runtime_lock_path, platform);
@@ -926,7 +929,7 @@ fn dry_run_build_artifact(
     let out_dir = resolve_out_dir(&root, &out_dir);
     let paths = planned_artifact_paths(
         &out_dir,
-        &command,
+        &runtime,
         layout,
         target_label.as_deref(),
         target.as_deref(),
@@ -935,7 +938,7 @@ fn dry_run_build_artifact(
         &root,
         &derived,
         layout,
-        &command,
+        &runtime,
         platform,
         target.as_deref(),
         &template_source,
@@ -948,13 +951,14 @@ fn dry_run_build_artifact(
 #[allow(clippy::too_many_arguments)]
 fn build_artifact(
     layout: Option<BundleLayout>,
-    command: Option<String>,
+    runtime: Option<String>,
+    delegate: Option<String>,
     target_label: Option<String>,
     platform_str: Option<String>,
     target: Option<String>,
     template: Option<PathBuf>,
     docs_url: Option<String>,
-    scheme: Option<runtime_data::InstallScheme>,
+    install_scheme: Option<runtime_data::InstallScheme>,
     install_name: Option<String>,
     out_dir: PathBuf,
     root_override: Option<PathBuf>,
@@ -969,14 +973,17 @@ fn build_artifact(
     let platform = parse_platform(platform_str);
 
     let mut derived = derive_runtime_lock(&root);
-    let command = resolve_runtime_command(command, &derived.input.config);
+    let runtime = resolve_runtime_name(runtime, &derived.input.config);
+    let delegate = resolve_delegate(delegate, &derived.input.config);
     let layout = resolve_bundle_layout(layout, &derived.input.config);
-    validate_command_name(&command);
+    validate_runtime_name(&runtime);
+    validate_delegate(&delegate);
+    derived.runtime_config.delegate = Some(delegate);
     if let Some(docs_url) = docs_url {
         derived.runtime_config.docs_url = Some(docs_url);
     }
-    apply_install_location_overrides(&mut derived.runtime_config, scheme, install_name);
-    validate_install_location_config(&derived.runtime_config, &command);
+    apply_install_location_overrides(&mut derived.runtime_config, install_scheme, install_name);
+    validate_install_location_config(&derived.runtime_config, &runtime);
     let runtime_lock_path = generated_runtime_lock_path(&root);
     write_generated_runtime_lock(&runtime_lock_path, &derived.content);
 
@@ -995,7 +1002,7 @@ fn build_artifact(
         &root,
         &source_binary,
         layout,
-        &command,
+        &runtime,
         target_label.as_deref(),
         platform,
         target.as_deref(),
@@ -1008,31 +1015,33 @@ fn build_artifact(
 #[allow(clippy::too_many_arguments)]
 fn run_artifact(
     layout: Option<BundleLayout>,
-    command: Option<String>,
+    runtime: Option<String>,
+    delegate: Option<String>,
     platform: Option<String>,
     out_dir: PathBuf,
     template: Option<PathBuf>,
     docs_url: Option<String>,
-    scheme: Option<runtime_data::InstallScheme>,
+    install_scheme: Option<runtime_data::InstallScheme>,
     install_name: Option<String>,
     root_override: Option<PathBuf>,
     args: Vec<OsString>,
 ) {
     let root = project_root(root_override.as_deref());
     let derived = derive_runtime_lock(&root);
-    let command = resolve_runtime_command(command, &derived.input.config);
+    let runtime = resolve_runtime_name(runtime, &derived.input.config);
     let layout = resolve_bundle_layout(layout, &derived.input.config);
-    let bundle_env_var = runtime_env_var(&command, "BUNDLE");
+    let bundle_env_var = runtime_env_var(&runtime, "BUNDLE");
     let bundle_dir = root.join(SHIP_STATE_DIR).join("bundle");
     let output = build_artifact(
         Some(layout),
-        Some(command),
+        Some(runtime),
+        delegate,
         None,
         platform,
         None,
         template,
         docs_url,
-        scheme,
+        install_scheme,
         install_name,
         out_dir,
         Some(root.clone()),
@@ -1052,12 +1061,29 @@ fn run_artifact(
     }
 }
 
-fn resolve_runtime_command(command: Option<String>, config: &ShipConfig) -> String {
-    command
-        .or_else(|| config.command.clone())
+fn resolve_runtime_name(runtime: Option<String>, config: &ShipConfig) -> String {
+    runtime
+        .or_else(|| config.runtime.clone())
         .unwrap_or_else(|| {
-            panic!("runtime command is required; pass --command or set [tool.conda-ship].command")
+            fatal_config_error(
+                "runtime is required; pass --runtime or set [tool.conda-ship].runtime",
+            )
         })
+}
+
+fn resolve_delegate(delegate: Option<String>, config: &ShipConfig) -> String {
+    delegate
+        .or_else(|| config.delegate.clone())
+        .unwrap_or_else(|| {
+            fatal_config_error(
+                "delegate is required; pass --delegate or set [tool.conda-ship].delegate",
+            )
+        })
+}
+
+fn fatal_config_error(message: impl std::fmt::Display) -> ! {
+    eprintln!("error: {message}");
+    std::process::exit(2);
 }
 
 fn resolve_bundle_layout(layout: Option<BundleLayout>, config: &ShipConfig) -> BundleLayout {
@@ -1201,7 +1227,7 @@ fn print_build_dry_run(
     root: &Path,
     derived: &DerivedRuntimeLock,
     layout: BundleLayout,
-    command: &str,
+    runtime: &str,
     platform: Platform,
     target: Option<&str>,
     template_source: &RuntimeTemplateSource,
@@ -1209,12 +1235,17 @@ fn print_build_dry_run(
     paths: &PlannedArtifactPaths,
     selected_package_count: usize,
 ) {
-    let install_scheme = derived.runtime_config.scheme.unwrap_or_default();
+    let install_scheme = derived.runtime_config.install_scheme.unwrap_or_default();
     let install_name = derived
         .runtime_config
         .install_name
         .as_deref()
-        .unwrap_or(command);
+        .unwrap_or(runtime);
+    let delegate = derived
+        .runtime_config
+        .delegate
+        .as_deref()
+        .expect("delegate has been resolved before dry-run output");
     let docs_url = derived
         .runtime_config
         .docs_url
@@ -1226,7 +1257,8 @@ fn print_build_dry_run(
     print_project_summary(root, derived);
     println!();
     println!("Runtime");
-    println!("  command: {command}");
+    println!("  runtime: {runtime}");
+    println!("  delegate: {delegate}");
     println!("  layout: {}", layout.as_str());
     println!("  platform: {platform}");
     println!("  target: {}", target.unwrap_or("current"));
@@ -1316,8 +1348,8 @@ fn platform_list(values: &[Platform]) -> String {
 
 fn install_scheme_name(scheme: runtime_data::InstallScheme) -> &'static str {
     match scheme {
-        runtime_data::InstallScheme::Conda => "conda",
-        runtime_data::InstallScheme::Data => "data",
+        runtime_data::InstallScheme::CondaHome => "conda-home",
+        runtime_data::InstallScheme::UserData => "user-data",
     }
 }
 
@@ -1547,8 +1579,12 @@ fn parse_platform(platform_str: Option<String>) -> Platform {
     }
 }
 
-fn validate_command_name(command: &str) {
-    validate_artifact_component("command name", command);
+fn validate_runtime_name(runtime: &str) {
+    validate_artifact_component("runtime name", runtime);
+}
+
+fn validate_delegate(delegate: &str) {
+    validate_artifact_component("delegate", delegate);
 }
 
 fn validate_target_label(label: &str) {
@@ -1561,11 +1597,11 @@ fn validate_target_triple(target: &str) {
 
 fn apply_install_location_overrides(
     config: &mut RuntimeStampConfig,
-    scheme: Option<runtime_data::InstallScheme>,
+    install_scheme: Option<runtime_data::InstallScheme>,
     install_name: Option<String>,
 ) {
-    if let Some(scheme) = scheme {
-        config.scheme = Some(scheme);
+    if let Some(install_scheme) = install_scheme {
+        config.install_scheme = Some(install_scheme);
     }
 
     if let Some(install_name) = install_name {
@@ -1574,8 +1610,8 @@ fn apply_install_location_overrides(
     }
 }
 
-fn validate_install_location_config(config: &RuntimeStampConfig, command: &str) {
-    validate_install_name(config.install_name.as_deref().unwrap_or(command));
+fn validate_install_location_config(config: &RuntimeStampConfig, runtime: &str) {
+    validate_install_name(config.install_name.as_deref().unwrap_or(runtime));
 }
 
 fn validate_install_name(install_name: &str) {
@@ -1764,17 +1800,23 @@ fn stamp_runtime_data(
     derived: &DerivedRuntimeLock,
     generated_bundle: Option<&Path>,
 ) {
-    let command_name = if layout == BundleLayout::Embedded {
+    let runtime_name = if layout == BundleLayout::Embedded {
         format!("{name}z")
     } else {
         name.to_string()
     };
+    let delegate = derived
+        .runtime_config
+        .delegate
+        .clone()
+        .expect("delegate has been resolved before stamping");
     let header = runtime_data::RuntimeDataHeader {
         schema_version: 1,
-        command_name,
-        embedded_command_name: format!("{name}z"),
+        runtime_name,
+        embedded_runtime_name: format!("{name}z"),
+        delegate,
         display_name: name.to_string(),
-        install_scheme: derived.runtime_config.scheme.unwrap_or_default(),
+        install_scheme: derived.runtime_config.install_scheme.unwrap_or_default(),
         install_name: derived
             .runtime_config
             .install_name
@@ -1958,13 +2000,14 @@ fn main() {
         } => gen_bundle(platform, dry_run, root),
         Command::Build {
             layout,
-            command,
+            runtime,
+            delegate,
             target_label,
             platform,
             target,
             template,
             docs_url,
-            scheme,
+            install_scheme,
             install_name,
             out_dir,
             dry_run,
@@ -1973,13 +2016,14 @@ fn main() {
             if dry_run {
                 dry_run_build_artifact(
                     layout,
-                    command,
+                    runtime,
+                    delegate,
                     target_label,
                     platform,
                     target,
                     template,
                     docs_url,
-                    scheme,
+                    install_scheme,
                     install_name,
                     out_dir,
                     root,
@@ -1988,13 +2032,14 @@ fn main() {
             }
             let output = build_artifact(
                 layout,
-                command,
+                runtime,
+                delegate,
                 target_label,
                 platform,
                 target,
                 template,
                 docs_url,
-                scheme,
+                install_scheme,
                 install_name,
                 out_dir,
                 root,
@@ -2009,23 +2054,25 @@ fn main() {
         }
         Command::Run {
             layout,
-            command,
+            runtime,
+            delegate,
             platform,
             out_dir,
             template,
             docs_url,
-            scheme,
+            install_scheme,
             install_name,
             root,
             args,
         } => run_artifact(
             layout,
-            command,
+            runtime,
+            delegate,
             platform,
             out_dir,
             template,
             docs_url,
-            scheme,
+            install_scheme,
             install_name,
             root,
             args,
@@ -2109,9 +2156,10 @@ name = "demo"
 channels = ["conda-forge"]
 
 [tool.conda-ship]
-command = "demo"
+runtime = "demo"
+delegate = "conda"
 layout = "external"
-source-environment = "runtime"
+source-environment = "ship"
 "#,
         )
         .unwrap();
@@ -2120,9 +2168,10 @@ source-environment = "runtime"
         let input = discover_project_input(tmp.path());
 
         assert_eq!(input.lock_path, tmp.path().join("pixi.lock"));
-        assert_eq!(input.config.command.as_deref(), Some("demo"));
+        assert_eq!(input.config.runtime.as_deref(), Some("demo"));
+        assert_eq!(input.config.delegate.as_deref(), Some("conda"));
         assert_eq!(input.config.layout, Some(BundleLayout::External));
-        assert_eq!(input.config.source_environment.as_deref(), Some("runtime"));
+        assert_eq!(input.config.source_environment.as_deref(), Some("ship"));
     }
 
     #[test]
@@ -2136,9 +2185,10 @@ name = "demo"
 channels = ["conda-forge"]
 
 [tool.conda-ship]
-command = "demo"
+runtime = "demo"
+delegate = "conda"
 layout = "embedded"
-source-environment = "runtime"
+source-environment = "ship"
 "#,
         )
         .unwrap();
@@ -2147,9 +2197,10 @@ source-environment = "runtime"
         let input = discover_project_input(tmp.path());
 
         assert_eq!(input.lock_path, tmp.path().join("conda.lock"));
-        assert_eq!(input.config.command.as_deref(), Some("demo"));
+        assert_eq!(input.config.runtime.as_deref(), Some("demo"));
+        assert_eq!(input.config.delegate.as_deref(), Some("conda"));
         assert_eq!(input.config.layout, Some(BundleLayout::Embedded));
-        assert_eq!(input.config.source_environment.as_deref(), Some("runtime"));
+        assert_eq!(input.config.source_environment.as_deref(), Some("ship"));
     }
 
     #[test]
@@ -2180,7 +2231,7 @@ name = "demo-pixi"
             tmp.path().join("pyproject.toml"),
             r#"
 [tool.conda-ship]
-source-environment = "runtime"
+source-environment = "ship"
 "#,
         )
         .unwrap();
@@ -2388,10 +2439,11 @@ path = "src/main.rs"
             },
             lock_file,
             content,
-            source_environment: "runtime".to_string(),
+            source_environment: "ship".to_string(),
             runtime_config: RuntimeStampConfig {
                 channels: vec!["conda-forge".to_string()],
                 packages: vec!["conda".to_string()],
+                delegate: Some("conda".to_string()),
                 ..RuntimeStampConfig::default()
             },
             platforms: vec![platform],
@@ -2433,36 +2485,41 @@ path = "src/main.rs"
     }
 
     #[test]
-    fn test_command_name_allows_filename_safe_components() {
-        validate_command_name("conda-ship_1.0");
+    fn test_runtime_name_allows_filename_safe_components() {
+        validate_runtime_name("conda-ship_1.0");
     }
 
     #[test]
-    #[should_panic(expected = "command name must not be . or ..")]
-    fn test_command_name_rejects_dot_component() {
-        validate_command_name(".");
+    #[should_panic(expected = "runtime name must not be . or ..")]
+    fn test_runtime_name_rejects_dot_component() {
+        validate_runtime_name(".");
     }
 
     #[test]
-    #[should_panic(expected = "command name must start with an ASCII letter or digit")]
-    fn test_command_name_rejects_leading_dash() {
-        validate_command_name("-demo");
-    }
-
-    #[test]
-    #[should_panic(
-        expected = "command name may only contain ASCII letters, digits, dots, dashes, and underscores"
-    )]
-    fn test_command_name_rejects_path_separator() {
-        validate_command_name("demo/tool");
+    #[should_panic(expected = "runtime name must start with an ASCII letter or digit")]
+    fn test_runtime_name_rejects_leading_dash() {
+        validate_runtime_name("-demo");
     }
 
     #[test]
     #[should_panic(
-        expected = "command name may only contain ASCII letters, digits, dots, dashes, and underscores"
+        expected = "runtime name may only contain ASCII letters, digits, dots, dashes, and underscores"
     )]
-    fn test_command_name_rejects_newline() {
-        validate_command_name("demo\ntool");
+    fn test_runtime_name_rejects_path_separator() {
+        validate_runtime_name("demo/tool");
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "runtime name may only contain ASCII letters, digits, dots, dashes, and underscores"
+    )]
+    fn test_runtime_name_rejects_newline() {
+        validate_runtime_name("demo\ntool");
+    }
+
+    #[test]
+    fn test_delegate_allows_filename_safe_components() {
+        validate_delegate("python3.12");
     }
 
     #[test]
@@ -2487,22 +2544,25 @@ path = "src/main.rs"
     }
 
     #[test]
-    fn test_build_accepts_scheme_with_install_name() {
+    fn test_build_accepts_install_scheme_with_install_name() {
         let cli = Cli::try_parse_from([
             "cs",
             "build",
-            "--command",
+            "--runtime",
             "cx",
-            "--scheme",
-            "data",
+            "--delegate",
+            "conda",
+            "--install-scheme",
+            "user-data",
             "--install-name",
             "express",
         ])
         .unwrap();
 
         let Command::Build {
-            command,
-            scheme,
+            runtime,
+            delegate,
+            install_scheme,
             install_name,
             ..
         } = cli.command
@@ -2510,37 +2570,52 @@ path = "src/main.rs"
             panic!("expected build command");
         };
 
-        assert_eq!(command.as_deref(), Some("cx"));
-        assert_eq!(scheme, Some(runtime_data::InstallScheme::Data));
+        assert_eq!(runtime.as_deref(), Some("cx"));
+        assert_eq!(delegate.as_deref(), Some("conda"));
+        assert_eq!(install_scheme, Some(runtime_data::InstallScheme::UserData));
         assert_eq!(install_name.as_deref(), Some("express"));
     }
 
     #[test]
-    fn test_build_accepts_manifest_command_without_cli_command() {
+    fn test_build_accepts_manifest_runtime_without_cli_runtime() {
         let cli = Cli::try_parse_from(["cs", "build"]).unwrap();
 
         let Command::Build {
-            command, layout, ..
+            runtime, layout, ..
         } = cli.command
         else {
             panic!("expected build command");
         };
 
-        assert_eq!(command, None);
+        assert_eq!(runtime, None);
         assert_eq!(layout, None);
     }
 
     #[test]
-    fn test_resolve_runtime_command_uses_manifest_config() {
+    fn test_resolve_runtime_name_uses_manifest_config() {
         let config = ShipConfig {
-            command: Some("demo".to_string()),
+            runtime: Some("demo".to_string()),
             ..ShipConfig::default()
         };
 
-        assert_eq!(resolve_runtime_command(None, &config), "demo");
+        assert_eq!(resolve_runtime_name(None, &config), "demo");
         assert_eq!(
-            resolve_runtime_command(Some("override".to_string()), &config),
+            resolve_runtime_name(Some("override".to_string()), &config),
             "override"
+        );
+    }
+
+    #[test]
+    fn test_resolve_delegate_uses_manifest_config() {
+        let config = ShipConfig {
+            delegate: Some("python".to_string()),
+            ..ShipConfig::default()
+        };
+
+        assert_eq!(resolve_delegate(None, &config), "python");
+        assert_eq!(
+            resolve_delegate(Some("conda".to_string()), &config),
+            "conda"
         );
     }
 
@@ -2564,7 +2639,7 @@ path = "src/main.rs"
 
     #[test]
     fn test_build_accepts_dry_run() {
-        let cli = Cli::try_parse_from(["cs", "build", "--command", "demo", "--dry-run"]).unwrap();
+        let cli = Cli::try_parse_from(["cs", "build", "--runtime", "demo", "--dry-run"]).unwrap();
 
         let Command::Build { dry_run, .. } = cli.command else {
             panic!("expected build command");
@@ -2594,7 +2669,7 @@ path = "src/main.rs"
     #[test]
     fn test_build_rejects_path_option() {
         let result =
-            Cli::try_parse_from(["cs", "build", "--command", "demo", "--path", "/tmp/demo"]);
+            Cli::try_parse_from(["cs", "build", "--runtime", "demo", "--path", "/tmp/demo"]);
 
         assert!(result.is_err(), "build-time --path should not be accepted");
     }
@@ -2604,7 +2679,7 @@ path = "src/main.rs"
         let result = Cli::try_parse_from([
             "cs",
             "run",
-            "--command",
+            "--runtime",
             "demo",
             "--path",
             "/tmp/demo",

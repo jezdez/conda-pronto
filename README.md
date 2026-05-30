@@ -7,14 +7,14 @@ installs the `cs` CLI.
 
 `conda-express` is a downstream distribution that uses conda-ship to publish the
 official `cx` and `cxz` runtimes. conda-ship owns the generic builder; a
-downstream distribution owns its package set, command names, release channels,
+downstream distribution owns its package set, runtime names, release channels,
 and installer wrappers.
 
 Artifact layouts:
 
-- `online`: runtime `<command>` with stamped lock/metadata; packages are downloaded during bootstrap.
-- `external`: runtime `<command>` plus `<command>.bundle.tar.zst`.
-- `embedded`: runtime `<command>z` with the compressed bundle embedded in one binary.
+- `online`: runtime `<runtime>` with stamped lock/metadata; packages are downloaded during bootstrap.
+- `external`: runtime `<runtime>` plus `<runtime>.bundle.tar.zst`.
+- `embedded`: runtime `<runtime>z` with the compressed bundle embedded in one binary.
 
 The CLI builds from a solved downstream project. Packaged builds find the
 installed runtime template automatically; source checkouts can omit
@@ -22,9 +22,10 @@ installed runtime template automatically; source checkouts can omit
 
 ```toml
 [tool.conda-ship]
-command = "demo"
+runtime = "demo"
+delegate = "conda"
 layout = "online"
-source-environment = "runtime"
+source-environment = "ship"
 ```
 
 ```bash

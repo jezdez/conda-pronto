@@ -17,7 +17,7 @@ plus `conda.lock`, `pixi.toml` plus `pixi.lock`, or `pyproject.toml` with
 `[tool.pixi]` plus `pixi.lock`. When the manifest or matching lockfile is
 missing, the action fails instead of generating or solving project configuration
 in CI. This minimal example assumes the manifest contains
-`[tool.conda-ship].command`.
+`[tool.conda-ship].runtime`.
 
 ```yaml
 - uses: actions/checkout@v4
@@ -28,10 +28,15 @@ in CI. This minimal example assumes the manifest contains
 
 ## Inputs
 
-`command`
-: Runtime command name override. Set this when the manifest does not contain
-  `[tool.conda-ship].command` or when a release job intentionally overrides it.
+`runtime`
+: Runtime name override. Set this when the manifest does not contain
+  `[tool.conda-ship].runtime` or when a release job intentionally overrides it.
   For example, conda-express uses `cx`; the `embedded` layout stages `cxz`.
+
+`delegate`
+: Delegate executable override. Set this when the manifest does not contain
+  `[tool.conda-ship].delegate` or when a release job intentionally overrides
+  which executable receives pass-through arguments.
 
 `root`
 : Project root containing `conda.toml`/`conda.lock`, `pixi.toml`/`pixi.lock`,
@@ -48,16 +53,16 @@ in CI. This minimal example assumes the manifest contains
 `docs-url`
 : Documentation URL stamped into the generated runtime help output.
 
-`scheme`
+`install-scheme`
 : Install scheme stamped into the generated runtime. Supported values are
-  `conda`, which installs below `~/.conda/INSTALL_NAME`, and `data`, which
-  installs below the platform user data directory. When `scheme` is not set,
-  the action leaves scheme selection to `[tool.conda-ship]` and the runtime
-  default.
+  `conda-home`, which installs below `~/.conda/INSTALL_NAME`, and `user-data`,
+  which installs below the platform user data directory. When `install-scheme`
+  is not set, the action leaves install scheme selection to `[tool.conda-ship]`
+  and the runtime default.
 
 `install-name`
 : Name used inside the install scheme. When omitted, `cs` uses
-  `[tool.conda-ship].install-name` or the resolved command name.
+  `[tool.conda-ship].install-name` or the resolved runtime name.
 
 ## Outputs
 

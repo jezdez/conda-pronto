@@ -1,11 +1,11 @@
 ---
 source: tests/cli_integration.rs
-assertion_line: 24
+assertion_line: 44
 expression: stdout
 ---
 This runtime installs a conda environment from a stamped lockfile.
 
-After bootstrap, commands are passed through to the installed conda executable.
+After bootstrap, commands are passed through to the configured delegate executable.
 
 Usage: conda-ship-runtime [OPTIONS] [COMMAND]
 

@@ -108,7 +108,7 @@ fn test_runtime_bootstrap_refuses_unmanaged_prefix() {
 
 #[cfg(unix)]
 #[test]
-fn test_runtime_default_command_refuses_unmanaged_default_prefix() {
+fn test_runtime_default_passthrough_refuses_unmanaged_default_prefix() {
     let tmp = TempDir::new().unwrap();
     let prefix = tmp.path().join(".conda").join("conda-ship-runtime");
     std::fs::create_dir_all(prefix.join("conda-meta")).unwrap();

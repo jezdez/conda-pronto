@@ -4,7 +4,7 @@ Use local builds while iterating on runtime package sets, channel choices, or
 conda-ship runtime behavior.
 
 Packaged local builds find the installed runtime template automatically. When
-your manifest contains `[tool.conda-ship].command`, a normal build is:
+your manifest contains `[tool.conda-ship].runtime`, a normal build is:
 
 ```bash
 cs build
@@ -26,7 +26,7 @@ When you want to check the selected source environment before building, run:
 cs inspect
 ```
 
-If you changed the `runtime` environment in `conda.toml` or `pyproject.toml`
+If you changed the configured source environment in `conda.toml` or `pyproject.toml`
 with `[tool.conda]`, use
 {external+conda-workspaces:doc}`conda workspace lock <reference/cli>` to refresh
 the source lockfile before building:
@@ -59,8 +59,10 @@ cs build --dry-run
 
 ## Build A Runtime
 
-`[tool.conda-ship].command` is required unless you pass `--command`.
-conda-ship does not provide a default runtime command name.
+`[tool.conda-ship].runtime`, `[tool.conda-ship].delegate`, and
+`[tool.conda-ship].source-environment` are required unless you pass the runtime
+and delegate through CLI flags. conda-ship does not provide default values for
+them.
 
 ```bash
 cs build
@@ -93,7 +95,7 @@ Pass both the Rust target triple and an artifact label:
 
 ```bash
 cs build \
-  --command demo \
+  --runtime demo \
   --target x86_64-unknown-linux-gnu \
   --target-label x86_64-unknown-linux-gnu \
   --template ./cs-runtime-template-x86_64-unknown-linux-gnu
@@ -103,10 +105,10 @@ The target label is appended to staged artifact names and metadata files.
 
 ## Keep Names Distribution-Specific
 
-Use a command owned by the distribution you are building. For example,
-conda-express uses `cx` as its command name. The online layout stages `cx`; the
+Use a runtime name owned by the distribution you are building. For example,
+conda-express uses `cx` as its runtime name. The online layout stages `cx`; the
 embedded layout stages `cxz`. A different distribution uses a different
-`[tool.conda-ship].command` value or the `--command` override.
+`[tool.conda-ship].runtime` value or the `--runtime` override.
 
 ## Run Release Checks
 

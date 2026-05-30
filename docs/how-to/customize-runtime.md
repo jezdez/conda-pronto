@@ -1,11 +1,12 @@
 # Customize A Runtime
 
 Use this guide when you want a conda-ship-built runtime with your own package
-set, command name, install location, channels, or documentation URL.
+set, runtime name, delegate executable, install location, channels, or
+documentation URL.
 
 conda-ship is generic. It does not publish a first-party runtime, and it
-does not reserve a default command name. `conda-express` is one downstream
-distribution that uses conda-ship to publish `cx` and `cxz`; use a command
+does not reserve a default runtime name. `conda-express` is one downstream
+distribution that uses conda-ship to publish `cx` and `cxz`; use a runtime name
 owned by your distribution.
 
 The manifest examples below describe the build input conda-ship consumes.
@@ -13,15 +14,15 @@ Packaged CLI builds find the installed runtime template automatically. Source
 checkouts can omit `--template` while changing conda-ship itself; that
 fallback builds the template locally.
 
-## Choose A Command Name
+## Choose A Runtime Name
 
-The runtime command name becomes part of the user interface:
+The runtime name becomes part of the user interface:
 
-- the command users run
-- the default install path, `~/.conda/INSTALL_NAME` with the `conda` scheme
-- the metadata file, `.COMMAND.json`
-- the bundle environment variable, `COMMAND_BUNDLE`
-- the offline environment variable, `COMMAND_OFFLINE`
+- the executable users run
+- the default install path, `~/.conda/INSTALL_NAME` with the `conda-home` install scheme
+- the metadata file, `.RUNTIME.json`
+- the bundle environment variable, `RUNTIME_BUNDLE`
+- the offline environment variable, `RUNTIME_OFFLINE`
 
 For environment variables, non-alphanumeric characters are converted to
 underscores. A runtime named `demo` uses `DEMO_BUNDLE` and
@@ -31,7 +32,8 @@ Use a product-specific name:
 
 ```toml
 [tool.conda-ship]
-command = "demo"
+runtime = "demo"
+delegate = "conda"
 layout = "online"
 ```
 
@@ -40,16 +42,17 @@ those names identify the official conda-express artifacts.
 
 ## Choose An Install Location
 
-By default, a runtime uses the `conda` scheme and installs below
-`~/.conda/COMMAND`, where `COMMAND` is the runtime command name. A downstream
+By default, a runtime uses the `conda-home` install scheme and installs below
+`~/.conda/RUNTIME`, where `RUNTIME` is the runtime name. A downstream
 distribution can choose a different install name without stamping an
 operating-system-specific path:
 
 ```toml
 [tool.conda-ship]
-command = "cx"
+runtime = "cx"
+delegate = "conda"
 layout = "online"
-scheme = "conda"
+install-scheme = "conda-home"
 install-name = "express"
 ```
 
@@ -57,16 +60,16 @@ install-name = "express"
 cs build
 ```
 
-That builds a runtime command named `cx` whose default install path resolves to
+That builds a runtime named `cx` whose default install path resolves to
 `~/.conda/express` on the user's machine. Users can still override the resolved
 path locally with the global runtime option, for example
-`COMMAND --path PATH bootstrap` or `COMMAND --path PATH status`.
+`RUNTIME --path PATH bootstrap` or `RUNTIME --path PATH status`.
 
 Choose a product-specific install name. conda-ship does not reserve names
 under `~/.conda`; it writes runtime metadata into bootstrapped prefixes and
 uses that metadata to avoid overwriting prefixes owned by other tools.
 
-For a platformdirs-style location, use `scheme = "data"`. That stores the
+For a platformdirs-style location, use `install-scheme = "user-data"`. That stores the
 runtime below the platform user data directory, such as
 `${XDG_DATA_HOME:-~/.local/share}/conda/INSTALL_NAME` on Linux,
 `~/Library/Application Support/conda/INSTALL_NAME` on macOS, and
@@ -98,7 +101,7 @@ name = "demo"
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64", "win-64"]
 
-[feature.runtime.dependencies]
+[feature.ship.dependencies]
 python = ">=3.12"
 conda = ">=25.1"
 conda-rattler-solver = "*"
@@ -107,15 +110,16 @@ numpy = "*"
 pandas = "*"
 
 [environments]
-runtime = { features = ["runtime"], no-default-feature = true }
+ship = { features = ["ship"], no-default-feature = true }
 
 [tool.conda-ship]
-command = "demo"
+runtime = "demo"
+delegate = "conda"
 layout = "online"
-source-environment = "runtime"
+source-environment = "ship"
 exclude = ["conda-libmamba-solver"]
 docs-url = "https://example.com/demo/"
-scheme = "conda"
+install-scheme = "conda-home"
 install-name = "demo"
 ```
 
@@ -137,25 +141,26 @@ name = "demo"
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64", "win-64"]
 
-[tool.conda.feature.runtime.dependencies]
+[tool.conda.feature.ship.dependencies]
 python = ">=3.12"
 conda = ">=25.1"
 conda-rattler-solver = "*"
 conda-spawn = ">=0.1.0"
 
 [tool.conda.environments]
-runtime = { features = ["runtime"], no-default-feature = true }
+ship = { features = ["ship"], no-default-feature = true }
 
 [tool.conda-ship]
-command = "demo"
+runtime = "demo"
+delegate = "conda"
 layout = "online"
-source-environment = "runtime"
+source-environment = "ship"
 exclude = ["conda-libmamba-solver"]
 ```
 
 This still uses `conda workspace lock` and `conda.lock`.
 
-For Pixi-compatible projects, keep the runtime package intent in Pixi's own
+For Pixi-compatible projects, keep the source environment package intent in Pixi's own
 sections. If Pixi config lives in `pyproject.toml`, the package and channel
 sections live under `[tool.pixi]`, while `[tool.conda-ship]` stays at the Python
 project tool level:
@@ -166,7 +171,7 @@ name = "demo"
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64", "win-64"]
 
-[tool.pixi.feature.runtime.dependencies]
+[tool.pixi.feature.ship.dependencies]
 python = ">=3.12,<3.15"
 conda = ">=25.1"
 conda-rattler-solver = "*"
@@ -175,16 +180,17 @@ numpy = "*"
 pandas = "*"
 
 [tool.pixi.environments]
-runtime = { features = ["runtime"], no-default-feature = true }
+ship = { features = ["ship"], no-default-feature = true }
 
 [tool.conda-ship]
-command = "demo"
+runtime = "demo"
+delegate = "conda"
 layout = "online"
-source-environment = "runtime"
+source-environment = "ship"
 exclude = ["conda-libmamba-solver"]
 ```
 
-Then refresh the source lockfile. conda-ship consumes the solved `runtime`
+Then refresh the source lockfile. conda-ship consumes the solved `ship`
 environment during `cs build`; it does not replace the workspace solver.
 
 ```bash

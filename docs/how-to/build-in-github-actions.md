@@ -12,7 +12,7 @@ Pin the action to a conda-ship release tag. The action downloads the matching
 `cs` and `cs-runtime-template` release assets, verifies their GitHub
 artifact attestations and release `SHA256SUMS`, and stamps the generated
 runtime. It runs `cs build --dry-run` before the real build so manifest,
-lockfile, naming, template, install-scheme, and bundle metadata issues fail
+lockfile, naming, template, install scheme, and bundle metadata issues fail
 before artifact files are written.
 
 GitHub-hosted runners already include the GitHub CLI used for attestation
@@ -23,8 +23,9 @@ verification. Self-hosted runners must provide `gh`.
 The checked-out repository must contain `conda.toml` plus `conda.lock`,
 `pyproject.toml` with `[tool.conda]` plus `conda.lock`, `pixi.toml` plus
 `pixi.lock`, or `pyproject.toml` with `[tool.pixi]` plus `pixi.lock`. These
-examples assume the manifest contains `[tool.conda-ship].command`; pass
-`command` only when CI should override that value.
+examples assume the manifest contains `[tool.conda-ship].runtime` and
+`[tool.conda-ship].delegate`; pass `runtime` or `delegate` only when CI should
+override those values.
 
 ```yaml
 jobs:
@@ -62,10 +63,10 @@ steps:
 The action does not run a solve, generate a manifest, or refresh a lockfile.
 Update and commit the lockfile before running release builds.
 
-Use `scheme` for a named install policy and `install-name` for the name inside
-that scheme. When neither is set, the action leaves those values to
-`[tool.conda-ship]` and the runtime defaults. With the default `conda` scheme,
-a command named `demo` installs below `~/.conda/demo`.
+Use `install-scheme` for a named install policy and `install-name` for the name inside
+that install scheme. When neither is set, the action leaves those values to
+`[tool.conda-ship]` and the runtime defaults. With the default `conda-home`
+install scheme, a runtime named `demo` installs below `~/.conda/demo`.
 
 ## External Bundle Example
 

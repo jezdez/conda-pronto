@@ -49,12 +49,12 @@ async fn async_main() -> miette::Result<()> {
     match cli.command {
         Some(Command::Bootstrap {
             force,
-            scheme,
+            install_scheme,
             lockfile,
             bundle,
             offline,
         }) => {
-            let prefix = resolve_install_path(scheme, path)?;
+            let prefix = resolve_install_path(install_scheme, path)?;
             let bundle = bundle.or_else(|| {
                 env::var(policy::bundle_env_var())
                     .ok()
@@ -77,12 +77,15 @@ async fn async_main() -> miette::Result<()> {
 
             return bootstrap(&prefix, force, lock_source, bundle, offline, verbosity).await;
         }
-        Some(Command::Status { scheme }) => {
-            let prefix = resolve_install_path(scheme, path)?;
+        Some(Command::Status { install_scheme }) => {
+            let prefix = resolve_install_path(install_scheme, path)?;
             return status(&prefix);
         }
-        Some(Command::Uninstall { scheme, yes }) => {
-            let prefix = resolve_install_path(scheme, path)?;
+        Some(Command::Uninstall {
+            install_scheme,
+            yes,
+        }) => {
+            let prefix = resolve_install_path(install_scheme, path)?;
             return uninstall(&prefix, yes, verbosity);
         }
         Some(Command::Shell { env, args }) => {
@@ -101,30 +104,37 @@ async fn async_main() -> miette::Result<()> {
             return exec::replace_process_with_conda(&prefix, &conda_arg_refs);
         }
         Some(Command::Help) => {
-            Cli::parse_runtime_from([policy::command_name(), "--help"]);
+            Cli::parse_runtime_from([policy::runtime_name(), "--help"]);
         }
         Some(Command::Passthrough(args)) => {
             let prefix = resolve_install_path(None, path)?;
-            let conda_args: Vec<String> = args
+            let delegate_args: Vec<String> = args
                 .iter()
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect();
-            let first_arg = conda_args.first().map(String::as_str);
-            match first_arg {
-                Some("activate") | Some("deactivate") => {
-                    print_disabled_shell_command(first_arg.unwrap());
+            if policy::delegate() == "conda" {
+                let first_arg = delegate_args.first().map(String::as_str);
+                match first_arg {
+                    Some("activate") | Some("deactivate") => {
+                        print_disabled_shell_command(first_arg.unwrap());
+                    }
+                    Some("init") => {
+                        print_disabled_init();
+                    }
+                    _ => {}
                 }
-                Some("init") => {
-                    print_disabled_init();
-                }
-                _ => {}
             }
             ensure_bootstrapped(&prefix).await?;
-            let conda_arg_refs: Vec<&str> = conda_args.iter().map(String::as_str).collect();
-            if exec::should_filter_conda_output(&conda_arg_refs) {
-                return exec::run_conda_filtered(&prefix, &conda_arg_refs);
+            let delegate_arg_refs: Vec<&str> = delegate_args.iter().map(String::as_str).collect();
+            if policy::delegate() == "conda" && exec::should_filter_conda_output(&delegate_arg_refs)
+            {
+                return exec::run_conda_filtered(&prefix, &delegate_arg_refs);
             }
-            return exec::replace_process_with_conda(&prefix, &conda_arg_refs);
+            return exec::replace_process_with_delegate(
+                &prefix,
+                policy::delegate(),
+                &delegate_arg_refs,
+            );
         }
         None => {
             let prefix = resolve_install_path(None, path)?;
@@ -132,30 +142,30 @@ async fn async_main() -> miette::Result<()> {
                 eprintln!(
                     "{} No conda installation found. Run `{} bootstrap` first.",
                     console::style("!").yellow().bold(),
-                    policy::command_name()
+                    policy::runtime_name()
                 );
                 std::process::exit(1);
             }
             require_managed_prefix(&prefix, "use")?;
-            return exec::replace_process_with_conda(&prefix, &["--help"]);
+            return exec::replace_process_with_delegate(&prefix, policy::delegate(), &["--help"]);
         }
     }
     Ok(())
 }
 
 fn resolve_install_path(
-    scheme: Option<runtime_data::InstallScheme>,
+    install_scheme: Option<runtime_data::InstallScheme>,
     path: Option<&std::path::PathBuf>,
 ) -> miette::Result<std::path::PathBuf> {
     if let Some(path) = path {
-        if scheme.is_some() {
+        if install_scheme.is_some() {
             return Err(miette::miette!(
-                "--scheme and --path are mutually exclusive install location options"
+                "--install-scheme and --path are mutually exclusive install location options"
             ));
         }
         policy::expand_install_path(path)
-    } else if let Some(scheme) = scheme {
-        policy::install_path_for_scheme(scheme, policy::install_name())
+    } else if let Some(install_scheme) = install_scheme {
+        policy::install_path_for_scheme(install_scheme, policy::install_name())
     } else {
         policy::default_install_path()
     }

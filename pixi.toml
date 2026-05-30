@@ -17,6 +17,7 @@ RUSTC_WRAPPER = "sccache"
 bundle = "cargo run -p conda-ship -- bundle"
 build = "cargo build --release --bin cs"
 build-debug = "cargo build --bin cs"
+check-lock = "cargo run -p conda-ship -- inspect --json > /dev/null"
 test = "cargo test --release --features runtime-template"
 test-all = "cargo test --release --features runtime-template,online_tests"
 coverage = "cargo llvm-cov --features runtime-template --lcov --output-path lcov.info"
@@ -40,7 +41,7 @@ docs = { cmd = "sphinx-build -b dirhtml . _build/dirhtml", cwd = "docs" }
 docs-serve = { cmd = "python -m http.server", cwd = "docs/_build/dirhtml" }
 docs-clean = { cmd = "rm -rf _build", cwd = "docs" }
 
-[feature.runtime.dependencies]
+[feature.ship.dependencies]
 python = ">=3.12"
 conda = ">=25.1"
 conda-rattler-solver = "*"
@@ -62,9 +63,9 @@ ruff-format-check = "ruff format --check python pyproject.toml"
 
 [environments]
 docs = ["docs"]
-runtime = { features = ["runtime"], no-default-feature = true }
+ship = { features = ["ship"], no-default-feature = true }
 test = ["test"]
 
 [tool.conda-ship]
-source-environment = "runtime"
+source-environment = "ship"
 exclude = ["conda-libmamba-solver"]

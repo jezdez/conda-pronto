@@ -53,21 +53,21 @@ Options:
 Build and stage a runtime artifact.
 
 ```bash
-cs build [--command COMMAND] [--layout LAYOUT] [--target-label LABEL] \
+cs build [--runtime RUNTIME] [--delegate EXECUTABLE] [--layout LAYOUT] [--target-label LABEL] \
   [--platform PLATFORM] [--target TRIPLE] [--template PATH] \
-  [--docs-url URL] [--scheme SCHEME] [--install-name NAME] \
+  [--docs-url URL] [--install-scheme SCHEME] [--install-name NAME] \
   [--out-dir PATH] [--dry-run] [--root PATH]
 ```
 
-`COMMAND`, `LABEL`, and `TRIPLE` are used in artifact filenames. They must
-start with an ASCII letter or digit and may only contain ASCII letters, digits,
-`.`, `_`, and `-`. `COMMAND` names the generated runtime; it is not a conda
-environment name. The command can come from `--command` or
-`[tool.conda-ship].command`.
+`RUNTIME`, `EXECUTABLE`, `LABEL`, and `TRIPLE` must start with an ASCII letter
+or digit and may only contain ASCII letters, digits, `.`, `_`, and `-`.
+`RUNTIME` names the generated runtime; it is not a conda environment name. The
+runtime and delegate can come from CLI flags or `[tool.conda-ship]`.
 
 Options:
 
-- `--command COMMAND`: override `[tool.conda-ship].command`.
+- `--runtime RUNTIME`: override `[tool.conda-ship].runtime`.
+- `--delegate EXECUTABLE`: override `[tool.conda-ship].delegate`.
 - `--layout online`: stage a runtime that downloads packages during bootstrap.
 - `--layout external`: stage a runtime plus compressed bundle.
 - `--layout embedded`: stage a runtime with the compressed bundle embedded.
@@ -81,11 +81,11 @@ Options:
   stamp. When omitted, packaged builds use the installed template, while source
   checkouts compile `conda-ship-runtime` from `--root`.
 - `--docs-url URL`: documentation URL stamped into runtime help output.
-- `--scheme SCHEME`: install scheme stamped into the runtime. Currently
-  supported: `conda`, which installs below `~/.conda/INSTALL_NAME`, and
-  `data`, which installs below the platform user data directory.
+- `--install-scheme SCHEME`: install scheme stamped into the runtime. Currently
+  supported: `conda-home`, which installs below `~/.conda/INSTALL_NAME`, and
+  `user-data`, which installs below the platform user data directory.
 - `--install-name NAME`: name used inside the install scheme. Defaults to
-  `COMMAND`.
+  `RUNTIME`.
 - `--out-dir PATH`: write staged artifacts somewhere other than `dist/`.
 - `--dry-run`: validate the build input and print the planned artifacts without
   compiling, downloading, stamping, or writing files.
@@ -96,8 +96,8 @@ Options:
 Build a runtime artifact and execute it immediately.
 
 ```bash
-cs run [--command COMMAND] [--layout LAYOUT] [--platform PLATFORM] \
-  [--template PATH] [--docs-url URL] [--scheme SCHEME] [--install-name NAME] \
+cs run [--runtime RUNTIME] [--delegate EXECUTABLE] [--layout LAYOUT] [--platform PLATFORM] \
+  [--template PATH] [--docs-url URL] [--install-scheme SCHEME] [--install-name NAME] \
   [--out-dir PATH] [--root PATH] \
   -- RUNTIME_ARGS...
 ```
@@ -106,7 +106,8 @@ Everything after `--` is passed to the staged runtime.
 
 Options:
 
-- `--command COMMAND`: override `[tool.conda-ship].command`.
+- `--runtime RUNTIME`: override `[tool.conda-ship].runtime`.
+- `--delegate EXECUTABLE`: override `[tool.conda-ship].delegate`.
 - `--layout online`: stage a runtime that downloads packages during bootstrap.
 - `--layout external`: stage a runtime plus compressed bundle.
 - `--layout embedded`: stage a runtime with the compressed bundle embedded.
@@ -116,10 +117,10 @@ Options:
   stamp. When omitted, packaged builds use the installed template, while source
   checkouts compile `conda-ship-runtime` from `--root`.
 - `--docs-url URL`: documentation URL stamped into runtime help output.
-- `--scheme SCHEME`: install scheme stamped into the runtime. Currently
-  supported: `conda` and `data`.
+- `--install-scheme SCHEME`: install scheme stamped into the runtime. Currently
+  supported: `conda-home` and `user-data`.
 - `--install-name NAME`: name used inside the install scheme. Defaults to
-  `COMMAND`.
+  `RUNTIME`.
 - `--out-dir PATH`: write staged artifacts somewhere other than `dist/`.
 - `--root PATH`: use a project root instead of auto-detecting one.
 - `RUNTIME_ARGS`: arguments passed to the staged runtime after it is built.

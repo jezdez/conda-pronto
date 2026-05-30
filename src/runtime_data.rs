@@ -47,15 +47,16 @@ impl RuntimeConfig {
 #[serde(rename_all = "kebab-case")]
 pub enum InstallScheme {
     #[default]
-    Conda,
-    Data,
+    CondaHome,
+    UserData,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct RuntimeDataHeader {
     pub schema_version: u32,
-    pub command_name: String,
-    pub embedded_command_name: String,
+    pub runtime_name: String,
+    pub embedded_runtime_name: String,
+    pub delegate: String,
     pub display_name: String,
     #[serde(default)]
     pub install_scheme: InstallScheme,
@@ -76,10 +77,11 @@ impl RuntimeDataHeader {
     pub fn for_name(name: &str) -> Self {
         Self {
             schema_version: FORMAT_VERSION,
-            command_name: name.to_string(),
-            embedded_command_name: format!("{name}z"),
+            runtime_name: name.to_string(),
+            embedded_runtime_name: format!("{name}z"),
+            delegate: "conda".to_string(),
             display_name: name.to_string(),
-            install_scheme: InstallScheme::Conda,
+            install_scheme: InstallScheme::CondaHome,
             install_name: name.to_string(),
             metadata_file: format!(".{name}.json"),
             bundle_env_var: runtime_env_var(name, "BUNDLE"),
@@ -389,8 +391,9 @@ mod tests {
         append_to_binary(tmp.path(), &header, None).unwrap();
         let data = read_from_path(tmp.path()).unwrap().unwrap();
 
-        assert_eq!(data.header.command_name, "snek");
-        assert_eq!(data.header.install_scheme, InstallScheme::Conda);
+        assert_eq!(data.header.runtime_name, "snek");
+        assert_eq!(data.header.delegate, "conda");
+        assert_eq!(data.header.install_scheme, InstallScheme::CondaHome);
         assert_eq!(data.header.install_name, "snek");
         assert_eq!(data.header.runtime_lock, "lock data");
         assert!(data.bundle.is_none());

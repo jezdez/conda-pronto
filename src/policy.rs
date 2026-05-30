@@ -8,12 +8,16 @@ use std::path::{Path, PathBuf};
 
 use crate::runtime_data;
 
-pub(crate) fn command_name() -> &'static str {
-    &runtime_data::current().header.command_name
+pub(crate) fn runtime_name() -> &'static str {
+    &runtime_data::current().header.runtime_name
 }
 
-pub(crate) fn embedded_command_name() -> &'static str {
-    &runtime_data::current().header.embedded_command_name
+pub(crate) fn embedded_runtime_name() -> &'static str {
+    &runtime_data::current().header.embedded_runtime_name
+}
+
+pub(crate) fn delegate() -> &'static str {
+    &runtime_data::current().header.delegate
 }
 
 pub(crate) fn display_name() -> &'static str {
@@ -57,12 +61,12 @@ pub(crate) fn install_path_for_scheme(
     install_name: &str,
 ) -> miette::Result<PathBuf> {
     match scheme {
-        runtime_data::InstallScheme::Conda => {
+        runtime_data::InstallScheme::CondaHome => {
             let home = dirs::home_dir()
                 .ok_or_else(|| miette::miette!("could not determine home directory"))?;
             Ok(home.join(".conda").join(install_name))
         }
-        runtime_data::InstallScheme::Data => {
+        runtime_data::InstallScheme::UserData => {
             let data_dir = dirs::data_local_dir()
                 .ok_or_else(|| miette::miette!("could not determine user data directory"))?;
             Ok(data_dir.join("conda").join(install_name))
@@ -75,8 +79,8 @@ pub(crate) fn install_scheme_path_for_display(
     install_name: &str,
 ) -> String {
     match scheme {
-        runtime_data::InstallScheme::Conda => format!("~/.conda/{install_name}"),
-        runtime_data::InstallScheme::Data => {
+        runtime_data::InstallScheme::CondaHome => format!("~/.conda/{install_name}"),
+        runtime_data::InstallScheme::UserData => {
             format!("{}/conda/{install_name}", user_data_dir_for_display())
         }
     }
@@ -88,8 +92,8 @@ pub(crate) fn expand_install_path(path: impl AsRef<Path>) -> miette::Result<Path
 
 pub(crate) fn install_path_for_posix_shell() -> String {
     match install_scheme() {
-        runtime_data::InstallScheme::Conda => format!("$HOME/.conda/{}", install_name()),
-        runtime_data::InstallScheme::Data => {
+        runtime_data::InstallScheme::CondaHome => format!("$HOME/.conda/{}", install_name()),
+        runtime_data::InstallScheme::UserData => {
             format!(
                 "{}/conda/{}",
                 user_data_dir_for_posix_shell(),
@@ -211,9 +215,9 @@ fn expand_env_vars(path: &str) -> String {
 
 pub(crate) fn status_binary_name(has_embedded_bundle: bool) -> &'static str {
     if has_embedded_bundle {
-        embedded_command_name()
+        embedded_runtime_name()
     } else {
-        command_name()
+        runtime_name()
     }
 }
 
@@ -224,7 +228,7 @@ Create a new environment instead: conda create -n myenv\n\
 To re-bootstrap: {command} bootstrap --force\n\
 To override: pass --override-frozen-env",
         display = display_name(),
-        command = command_name()
+        command = runtime_name()
     )
 }
 
@@ -265,8 +269,8 @@ mod tests {
 
     #[test]
     fn test_conda_scheme_is_home_relative() {
-        let path =
-            install_path_for_scheme(runtime_data::InstallScheme::Conda, install_name()).unwrap();
+        let path = install_path_for_scheme(runtime_data::InstallScheme::CondaHome, install_name())
+            .unwrap();
         assert!(path.is_absolute());
         assert!(path.ends_with(PathBuf::from(".conda").join(install_name())));
         assert_ne!(
@@ -280,7 +284,7 @@ mod tests {
     #[test]
     fn test_data_scheme_is_data_local_relative() {
         let path =
-            install_path_for_scheme(runtime_data::InstallScheme::Data, install_name()).unwrap();
+            install_path_for_scheme(runtime_data::InstallScheme::UserData, install_name()).unwrap();
         let expected_base = dirs::data_local_dir().unwrap();
         assert_eq!(path, expected_base.join("conda").join(install_name()));
     }

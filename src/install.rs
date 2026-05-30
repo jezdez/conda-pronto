@@ -235,7 +235,7 @@ pub fn extract_embedded_bundle() -> miette::Result<Option<PathBuf>> {
     let tmp_dir = tempfile::Builder::new()
         .prefix(&format!(
             "{}-bundle-",
-            crate::policy::embedded_command_name()
+            crate::policy::embedded_runtime_name()
         ))
         .tempdir()
         .into_diagnostic()

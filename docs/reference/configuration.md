@@ -45,28 +45,29 @@ while inspecting, building, bundling, or smoke-testing a runtime.
 ## Source Environment
 
 The selected source environment determines the conda packages available to the
-generated runtime. In `conda.toml` or `pixi.toml`, this is commonly a
-dedicated `runtime` environment:
+generated runtime. In `conda.toml` or `pixi.toml`, use a dedicated `ship`
+environment for the packages that should be included in the runtime:
 
 ```toml
-[feature.runtime.dependencies]
+[feature.ship.dependencies]
 python = ">=3.12"
 conda = ">=25.1"
 conda-rattler-solver = "*"
 conda-spawn = ">=0.1.0"
 
 [environments]
-runtime = { features = ["runtime"], no-default-feature = true }
+ship = { features = ["ship"], no-default-feature = true }
 ```
 
 In `pyproject.toml`, conda-workspaces sections live below `[tool.conda]`, for
-example `[tool.conda.feature.runtime.dependencies]`. Pixi sections live below
-`[tool.pixi]`, for example `[tool.pixi.feature.runtime.dependencies]`.
+example `[tool.conda.feature.ship.dependencies]`. Pixi sections live below
+`[tool.pixi]`, for example `[tool.pixi.feature.ship.dependencies]`.
 
 The selected environment must include `conda`, `conda-rattler-solver`, and
-`conda-spawn`. Generated runtimes delegate commands to conda, write
-`solver: rattler` into the installed `.condarc`, and implement `COMMAND shell`
-through conda-spawn.
+`conda-spawn`. Generated runtimes install that environment as the managed base
+prefix, write `solver: rattler` into the installed `.condarc`, and implement
+`RUNTIME shell` through conda-spawn. Pass-through commands go to the configured
+delegate executable inside that prefix.
 
 ## `[tool.conda-ship]`
 
@@ -74,26 +75,35 @@ through conda-spawn.
 
 ```toml
 [tool.conda-ship]
-command = "demo"
+runtime = "demo"
+delegate = "conda"
 layout = "online"
-source-environment = "runtime"
+source-environment = "ship"
 exclude = ["conda-libmamba-solver"]
 docs-url = "https://example.com/demo/"
-scheme = "conda"
+install-scheme = "conda-home"
 install-name = "demo"
 ```
 
-`command`
-: Command name for the generated runtime. `cs build` and `cs run` require this
-  value, either here or through `--command`. It is not a conda environment name.
+`runtime`
+: Name for the generated runtime executable. `cs build` and `cs run` require
+  this value, either here or through `--runtime`. It is not a conda environment
+  name.
+
+`delegate`
+: Executable inside the managed prefix that receives pass-through arguments
+  after bootstrap. Use `conda` for conda-like runtimes such as `cx`. Other
+  values, such as `python`, are supported when a runtime should expose a
+  different command surface.
 
 `layout`
 : Artifact layout to build. Supported values are `online`, `external`, and
   `embedded`. When omitted, `cs build` defaults to `online`.
 
 `source-environment`
-: Name of the solved environment to turn into the runtime lock. When omitted,
-  conda-ship first tries `runtime`, then falls back to the default environment.
+: Name of the solved environment to turn into the runtime lock. This value is
+  required; conda-ship does not fall back to a default environment because that
+  can accidentally ship development or test dependencies.
 
 `exclude`
 : Package names removed from the derived runtime lock, including dependencies
@@ -103,16 +113,16 @@ install-name = "demo"
 : Documentation URL stamped into generated runtime help output. The GitHub
   Action also exposes this as the `docs-url` input.
 
-`scheme`
+`install-scheme`
 : Install scheme stamped into the generated runtime. Supported values are
-  `conda`, which installs below `~/.conda/INSTALL_NAME`, and `data`, which
-  installs below the platform user data directory. `conda` is the default when
-  `scheme` is not configured.
+  `conda-home`, which installs below `~/.conda/INSTALL_NAME`, and `user-data`,
+  which installs below the platform user data directory. `conda-home` is the
+  default when `install-scheme` is not configured.
 
 `install-name`
 : Name used inside the install scheme. When omitted, conda-ship uses the
-  generated runtime command name. For example, `command = "cx"` can use
-  `install-name = "express"` so the `conda` scheme resolves to
+  generated runtime name. For example, `runtime = "cx"` can use
+  `install-name = "express"` so the `conda-home` install scheme resolves to
   `~/.conda/express`.
   Choose a product-specific install name. conda-ship does not reserve names
   under `~/.conda`; it relies on runtime metadata to avoid overwriting prefixes
@@ -124,17 +134,18 @@ URLs from the source lockfile environment into generated runtime metadata.
 
 ## Stamped Runtime Metadata
 
-`cs build` stamps these values onto the runtime after resolving `command` and
+`cs build` stamps these values onto the runtime after resolving `runtime` and
 `layout` from CLI flags or `[tool.conda-ship]`:
 
-- command name: `COMMAND` for `online` and `external`, `COMMAND` plus `z` for
+- runtime name: `RUNTIME` for `online` and `external`, `RUNTIME` plus `z` for
   `embedded`
-- display name: `COMMAND`
-- install scheme: `conda`, or the configured `scheme`
-- install name: `COMMAND`, or the configured `install-name`
-- metadata file: `.COMMAND.json`
-- bundle environment variable: uppercased `COMMAND` plus `_BUNDLE`
-- offline environment variable: uppercased `COMMAND` plus `_OFFLINE`
+- delegate executable: the configured `delegate`
+- display name: `RUNTIME`
+- install scheme: `conda-home`, or the configured `install-scheme`
+- install name: `RUNTIME`, or the configured `install-name`
+- metadata file: `.RUNTIME.json`
+- bundle environment variable: uppercased `RUNTIME` plus `_BUNDLE`
+- offline environment variable: uppercased `RUNTIME` plus `_OFFLINE`
 
 Non-alphanumeric characters in environment variable names become underscores.
 

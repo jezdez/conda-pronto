@@ -4,8 +4,8 @@ Build ready-to-run conda runtimes.
 
 `conda-ship` is a generic builder for single-binary conda runtimes. It
 installs the `cs` CLI, but it does not ship a first-party distribution.
-Downstream projects choose the command name, package set, channels,
-documentation URL, and release channel.
+Downstream projects choose the runtime name, delegate executable, package set,
+channels, documentation URL, and release channel.
 
 `conda-express` is one downstream distribution: it uses conda-ship to build the
 official `cx` and `cxz` runtimes. conda-ship owns the reusable builder;

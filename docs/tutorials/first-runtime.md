@@ -63,8 +63,8 @@ cd demo-runtime
 ```
 
 Then choose the manifest tool you want to use. The two paths produce the same
-runtime intent: a `runtime` environment containing conda itself, the rattler
-solver plugin, and conda-spawn for `demo shell`.
+runtime intent: a `ship` environment containing conda itself, the rattler solver
+plugin, and conda-spawn for `demo shell`.
 
 ::::{tab-set}
 
@@ -76,11 +76,11 @@ Create a `conda.toml`:
 conda workspace init --format conda --name demo-runtime
 ```
 
-Add the runtime packages to a `runtime` feature. `conda workspace add` creates
-the matching `runtime` environment in the manifest:
+Add the runtime packages to a `ship` feature. `conda workspace add` creates the
+matching `ship` environment in the manifest:
 
 ```bash
-conda workspace add --feature runtime --no-lockfile-update \
+conda workspace add --feature ship --no-lockfile-update \
   "python>=3.12" \
   "conda>=25.1" \
   conda-rattler-solver \
@@ -93,9 +93,10 @@ Add conda-ship's build policy:
 cat >> conda.toml <<'TOML'
 
 [tool.conda-ship]
-command = "demo"
+runtime = "demo"
+delegate = "conda"
 layout = "online"
-source-environment = "runtime"
+source-environment = "ship"
 exclude = ["conda-libmamba-solver"]
 TOML
 ```
@@ -110,28 +111,29 @@ Create a `pixi.toml`:
 pixi init --channel conda-forge
 ```
 
-Add the runtime feature, runtime environment, and conda-ship build policy:
+Add the `ship` feature, `ship` environment, and conda-ship build policy:
 
 ```bash
 cat >> pixi.toml <<'TOML'
 
-[feature.runtime.dependencies]
+[feature.ship.dependencies]
 
 [environments]
-runtime = { features = ["runtime"], no-default-feature = true }
+ship = { features = ["ship"], no-default-feature = true }
 
 [tool.conda-ship]
-command = "demo"
+runtime = "demo"
+delegate = "conda"
 layout = "online"
-source-environment = "runtime"
+source-environment = "ship"
 exclude = ["conda-libmamba-solver"]
 TOML
 ```
 
-Use Pixi's native add command to put packages in the `runtime` feature:
+Use Pixi's native add command to put packages in the `ship` feature:
 
 ```bash
-pixi add --feature runtime --no-install \
+pixi add --feature ship --no-install \
   "python>=3.12" \
   "conda>=25.1" \
   conda-rattler-solver \
@@ -223,7 +225,7 @@ Check it:
 ```
 
 The status output shows the install path, configured channels, package metadata,
-installed package count, and conda executable path.
+installed package count, and delegate executable path.
 
 Clean up the temporary install:
 
@@ -258,6 +260,6 @@ You created a small workspace project, solved it, built an online runtime, and
 used that binary to install and manage its own conda prefix in a temporary smoke
 test.
 
-For a real downstream distribution, choose a command name owned by that
+For a real downstream distribution, choose a runtime name owned by that
 distribution, keep its package choices in the source manifest, and publish the
 staged files from `dist/`.

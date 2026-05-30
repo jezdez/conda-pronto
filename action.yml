@@ -8,8 +8,12 @@ branding:
   color: green
 
 inputs:
-  command:
-    description: "Runtime command name to build. Overrides [tool.conda-ship].command when set."
+  runtime:
+    description: "Runtime name to build. Overrides [tool.conda-ship].runtime when set."
+    required: false
+    default: ""
+  delegate:
+    description: "Delegate executable inside the managed prefix. Overrides [tool.conda-ship].delegate when set."
     required: false
     default: ""
   root:
@@ -24,8 +28,8 @@ inputs:
     description: "Documentation URL embedded in the runtime help output. Overrides [tool.conda-ship].docs-url when set."
     required: false
     default: ""
-  scheme:
-    description: "Install scheme stamped into the runtime. Overrides [tool.conda-ship].scheme when set."
+  install-scheme:
+    description: "Install scheme stamped into the runtime. Overrides [tool.conda-ship].install-scheme when set."
     required: false
     default: ""
   install-name:
@@ -201,10 +205,11 @@ runs:
       shell: bash
       env:
         CONDA_SHIP_LAYOUT: ${{ inputs.layout }}
-        CONDA_SHIP_COMMAND: ${{ inputs.command }}
+        CONDA_SHIP_RUNTIME: ${{ inputs.runtime }}
+        CONDA_SHIP_DELEGATE: ${{ inputs.delegate }}
         CONDA_SHIP_INSTALL_NAME: ${{ inputs.install-name }}
         CONDA_SHIP_ROOT: ${{ inputs.root }}
-        CONDA_SHIP_SCHEME: ${{ inputs.scheme }}
+        CONDA_SHIP_INSTALL_SCHEME: ${{ inputs.install-scheme }}
       run: |
         root="${CONDA_SHIP_ROOT:-.}"
         case "$root" in
@@ -213,8 +218,13 @@ runs:
             exit 1
             ;;
         esac
-        if [ -n "$CONDA_SHIP_COMMAND" ] && [[ ! "$CONDA_SHIP_COMMAND" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-          echo "Invalid runtime command name: ${CONDA_SHIP_COMMAND}" >&2
+        if [ -n "$CONDA_SHIP_RUNTIME" ] && [[ ! "$CONDA_SHIP_RUNTIME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+          echo "Invalid runtime name: ${CONDA_SHIP_RUNTIME}" >&2
+          echo "Use ASCII letters, digits, dots, dashes, or underscores, starting with a letter or digit." >&2
+          exit 1
+        fi
+        if [ -n "$CONDA_SHIP_DELEGATE" ] && [[ ! "$CONDA_SHIP_DELEGATE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+          echo "Invalid delegate executable name: ${CONDA_SHIP_DELEGATE}" >&2
           echo "Use ASCII letters, digits, dots, dashes, or underscores, starting with a letter or digit." >&2
           exit 1
         fi
@@ -228,14 +238,16 @@ runs:
               ;;
           esac
         fi
-        case "${CONDA_SHIP_SCHEME:-conda}" in
-          conda|data)
-            ;;
-          *)
-            echo "Unsupported install scheme: ${CONDA_SHIP_SCHEME}. Use 'conda' or 'data'." >&2
-            exit 1
-            ;;
-        esac
+        if [ -n "$CONDA_SHIP_INSTALL_SCHEME" ]; then
+          case "$CONDA_SHIP_INSTALL_SCHEME" in
+            conda-home|user-data)
+              ;;
+            *)
+              echo "Unsupported install scheme: ${CONDA_SHIP_INSTALL_SCHEME}. Use 'conda-home' or 'user-data'." >&2
+              exit 1
+              ;;
+          esac
+        fi
         if [ -n "$CONDA_SHIP_INSTALL_NAME" ]; then
           if [[ ! "$CONDA_SHIP_INSTALL_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
             echo "Invalid install name: ${CONDA_SHIP_INSTALL_NAME}" >&2
@@ -292,10 +304,11 @@ runs:
         CONDA_SHIP_DOCS_URL: ${{ inputs.docs-url }}
         CONDA_SHIP_INSTALL_NAME: ${{ inputs.install-name }}
         CONDA_SHIP_LAYOUT: ${{ inputs.layout }}
-        CONDA_SHIP_COMMAND: ${{ inputs.command }}
+        CONDA_SHIP_RUNTIME: ${{ inputs.runtime }}
+        CONDA_SHIP_DELEGATE: ${{ inputs.delegate }}
         CS_PATH: ${{ steps.download.outputs.cs_path }}
         CONDA_SHIP_ROOT: ${{ steps.project.outputs.root }}
-        CONDA_SHIP_SCHEME: ${{ inputs.scheme }}
+        CONDA_SHIP_INSTALL_SCHEME: ${{ inputs.install-scheme }}
         CONDA_SHIP_TARGET: ${{ steps.resolve.outputs.target }}
         TEMPLATE_PATH: ${{ steps.download.outputs.template_path }}
       run: |
@@ -317,11 +330,14 @@ runs:
         if [ -n "$CONDA_SHIP_LAYOUT" ]; then
           build_args+=(--layout "$CONDA_SHIP_LAYOUT")
         fi
-        if [ -n "$CONDA_SHIP_COMMAND" ]; then
-          build_args+=(--command "$CONDA_SHIP_COMMAND")
+        if [ -n "$CONDA_SHIP_RUNTIME" ]; then
+          build_args+=(--runtime "$CONDA_SHIP_RUNTIME")
         fi
-        if [ -n "$CONDA_SHIP_SCHEME" ]; then
-          build_args+=(--scheme "$CONDA_SHIP_SCHEME")
+        if [ -n "$CONDA_SHIP_DELEGATE" ]; then
+          build_args+=(--delegate "$CONDA_SHIP_DELEGATE")
+        fi
+        if [ -n "$CONDA_SHIP_INSTALL_SCHEME" ]; then
+          build_args+=(--install-scheme "$CONDA_SHIP_INSTALL_SCHEME")
         fi
         if [ -n "$CONDA_SHIP_INSTALL_NAME" ]; then
           build_args+=(--install-name "$CONDA_SHIP_INSTALL_NAME")

@@ -50,9 +50,8 @@ tar -I zstd -xf demo.bundle.tar.zst -C /opt/demo-bundle
 demo --path /opt/demo bootstrap --bundle /opt/demo-bundle --offline
 ```
 
-conda-ship also stamps a command-specific bundle environment variable into the
-runtime. For a command named `demo`, that variable is
-`DEMO_BUNDLE`.
+conda-ship also stamps a runtime-specific bundle environment variable into the
+runtime. For a runtime named `demo`, that variable is `DEMO_BUNDLE`.
 
 ## Bootstrap From An Embedded Bundle
 

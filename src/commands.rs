@@ -222,14 +222,15 @@ pub(crate) async fn bootstrap(
 
     if verbosity != Verbosity::Quiet {
         eprintln!(
-            "\n{} conda bootstrapped successfully!",
+            "\n{} runtime bootstrapped successfully!",
             console::style("✔").green().bold()
         );
         eprintln!("   Install path: {}", prefix.display());
-        eprintln!("   Run `{} status` for details.", policy::command_name());
+        eprintln!("   Run `{} status` for details.", policy::runtime_name());
         eprintln!(
-            "   Use `{} <conda-args>` to run conda commands.",
-            policy::command_name()
+            "   Use `{} <{}-args>` to run delegate commands.",
+            policy::runtime_name(),
+            policy::delegate()
         );
     }
 
@@ -286,11 +287,13 @@ pub(crate) fn status(prefix: &Path) -> miette::Result<()> {
     let installed = PrefixRecord::collect_from_prefix::<PrefixRecord>(prefix).into_diagnostic()?;
     println!("  installed: {} packages", installed.len());
 
-    let conda_bin = exec::conda_binary(prefix);
+    let delegate = policy::delegate();
+    let delegate_bin = exec::executable_in_prefix(prefix, delegate);
     println!(
-        "  conda:     {}",
-        if conda_bin.exists() {
-            conda_bin.display().to_string()
+        "  delegate:  {} ({})",
+        delegate,
+        if delegate_bin.exists() {
+            delegate_bin.display().to_string()
         } else {
             "(not found)".to_string()
         }
@@ -432,7 +435,7 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
         eprintln!(
             "\n{} To complete removal, delete the {} binary:",
             console::style("i").blue().bold(),
-            policy::command_name()
+            policy::runtime_name()
         );
         eprintln!("{hint}");
     }
@@ -527,7 +530,7 @@ pub(crate) fn print_disabled_shell_command(command: &str) -> ! {
     eprintln!();
     eprintln!(
         "    {}",
-        console::style(format!("{} shell myenv", policy::command_name())).green()
+        console::style(format!("{} shell myenv", policy::runtime_name())).green()
     );
     eprintln!();
     eprintln!("  To leave the environment, exit the subshell (Ctrl+D or `exit`).");
@@ -562,7 +565,7 @@ pub(crate) fn print_disabled_init() -> ! {
     eprintln!();
     eprintln!(
         "    {}",
-        console::style(format!("{} shell myenv", policy::command_name())).green()
+        console::style(format!("{} shell myenv", policy::runtime_name())).green()
     );
     eprintln!();
     eprintln!("  Learn more: https://github.com/conda-incubator/conda-spawn");

@@ -16,17 +16,17 @@ def test_configure_parser_collects_ship_args() -> None:
     parser = argparse.ArgumentParser(prog="conda ship")
     configure_parser(parser)
 
-    args = parser.parse_args(["build", "--layout", "online", "--command", "demo"])
+    args = parser.parse_args(["build", "--layout", "online", "--runtime", "demo"])
 
-    assert args.ship_args == ["build", "--layout", "online", "--command", "demo"]
+    assert args.ship_args == ["build", "--layout", "online", "--runtime", "demo"]
 
 
 @pytest.mark.parametrize(
     ("argv", "expected"),
     [
         pytest.param(
-            ["build", "--command", "demo"],
-            ["/tmp/cs", "build", "--command", "demo"],
+            ["build", "--runtime", "demo"],
+            ["/tmp/cs", "build", "--runtime", "demo"],
             id="args",
         ),
         pytest.param(["--"], ["/tmp/cs", "--help"], id="separator-defaults-to-help"),

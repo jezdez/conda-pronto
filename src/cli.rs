@@ -64,32 +64,54 @@ impl Cli {
 
     fn runtime_command() -> clap::Command {
         Self::command()
-            .name(policy::command_name())
+            .name(policy::runtime_name())
             .about("Single-binary conda runtime")
             .long_about(
                 "This runtime installs a conda environment from a stamped lockfile.\n\n\
-                After bootstrap, commands are passed through to the installed conda executable.",
+                After bootstrap, commands are passed through to the configured delegate executable.",
             )
             .after_help(runtime_after_help())
     }
 }
 
 fn runtime_after_help() -> String {
-    let name = policy::command_name();
+    let name = policy::runtime_name();
+    let delegate = policy::delegate();
+    let quick_start = if delegate == "conda" {
+        format!(
+            "{name} bootstrap                           Install conda into {path}\n  \
+            {name} create -n myenv python=3.12 numpy   Create an environment\n  \
+            {name} shell myenv                         Activate (spawns a subshell)\n  \
+            exit                                   Leave the environment",
+            path = policy::install_path_for_display(),
+        )
+    } else {
+        format!(
+            "{name} bootstrap                           Install conda into {path}\n  \
+            {name} --help                              Show {delegate} help after bootstrap",
+            path = policy::install_path_for_display(),
+        )
+    };
+    let pass_through_examples = if delegate == "conda" {
+        format!(
+            "Any command not listed above is passed through to conda:\n  \
+            {name} install, {name} remove, {name} list, {name} env, {name} info, {name} config, ..."
+        )
+    } else {
+        format!(
+            "Any command not listed above is passed through to {delegate}:\n  \
+            {name} <{delegate}-args> ..."
+        )
+    };
     format!(
         "\x1b[1;4mQuick start:\x1b[0m\n\n  \
-        {name} bootstrap                           Install conda into {path}\n  \
-        {name} create -n myenv python=3.12 numpy   Create an environment\n  \
-        {name} shell myenv                         Activate (spawns a subshell)\n  \
-        exit                                   Leave the environment\n\n\
+        {quick_start}\n\n\
         \x1b[1;4mManagement:\x1b[0m\n\n  \
         {name} status                              Show installation details\n  \
         {name} uninstall                           Remove the install path and environments\n\n\
         \x1b[1;4mPass-through:\x1b[0m\n\n  \
-        Any command not listed above is passed through to conda:\n  \
-        {name} install, {name} remove, {name} list, {name} env, {name} info, {name} config, ...\n\n\
+        {pass_through_examples}\n\n\
         \x1b[4mDocs:\x1b[0m {docs_url}",
-        path = policy::install_path_for_display(),
         docs_url = policy::docs_url(),
     )
 }
@@ -103,8 +125,8 @@ pub enum Command {
         force: bool,
 
         /// Install scheme to use instead of the stamped default
-        #[clap(long, value_enum)]
-        scheme: Option<InstallScheme>,
+        #[clap(long = "install-scheme", value_enum)]
+        install_scheme: Option<InstallScheme>,
 
         /// Use an external lockfile instead of the embedded one
         #[clap(long)]
@@ -123,8 +145,8 @@ pub enum Command {
     /// Print runtime status (install path, channels, packages)
     Status {
         /// Install scheme to use instead of the stamped default
-        #[clap(long, value_enum)]
-        scheme: Option<InstallScheme>,
+        #[clap(long = "install-scheme", value_enum)]
+        install_scheme: Option<InstallScheme>,
     },
 
     /// Activate an environment via subshell (alias for conda spawn)
@@ -140,8 +162,8 @@ pub enum Command {
     /// Uninstall this runtime: remove the install path and environments
     Uninstall {
         /// Install scheme to use instead of the stamped default
-        #[clap(long, value_enum)]
-        scheme: Option<InstallScheme>,
+        #[clap(long = "install-scheme", value_enum)]
+        install_scheme: Option<InstallScheme>,
 
         /// Skip confirmation prompt
         #[clap(long, short)]
@@ -174,7 +196,7 @@ mod tests {
             cli.command,
             Some(Command::Bootstrap {
                 force: false,
-                scheme: None,
+                install_scheme: None,
                 lockfile: None,
                 bundle: None,
                 offline: false,
@@ -190,12 +212,17 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_bootstrap_scheme() {
-        let cli = Cli::parse_from(["conda-ship-runtime", "bootstrap", "--scheme", "data"]);
+    fn test_parse_bootstrap_install_scheme() {
+        let cli = Cli::parse_from([
+            "conda-ship-runtime",
+            "bootstrap",
+            "--install-scheme",
+            "user-data",
+        ]);
         assert_matches!(
             cli.command,
             Some(Command::Bootstrap {
-                scheme: Some(InstallScheme::Data),
+                install_scheme: Some(InstallScheme::UserData),
                 ..
             })
         );
@@ -219,7 +246,12 @@ mod tests {
     #[test]
     fn test_parse_status() {
         let cli = Cli::parse_from(["conda-ship-runtime", "status"]);
-        assert_matches!(cli.command, Some(Command::Status { scheme: None }));
+        assert_matches!(
+            cli.command,
+            Some(Command::Status {
+                install_scheme: None
+            })
+        );
     }
 
     #[test]
@@ -278,7 +310,7 @@ mod tests {
             cli.command,
             Some(Command::Uninstall {
                 yes: true,
-                scheme: None,
+                install_scheme: None,
             })
         );
     }

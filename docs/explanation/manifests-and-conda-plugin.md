@@ -30,25 +30,25 @@ The lockfile remains the source of concrete package records. If the selected
 lockfile is missing, create it with the tool that owns the manifest, then run
 `cs inspect` or `cs build --dry-run` again.
 
-## Runtime Environment Selection
+## Source Environment Selection
 
-The solved environment used for the runtime is selected by
+The solved environment used for the runtime is selected explicitly by
 `[tool.conda-ship].source-environment`:
 
 ```toml
 [tool.conda-ship]
-command = "demo"
+runtime = "demo"
+delegate = "conda"
 layout = "online"
-source-environment = "runtime"
+source-environment = "ship"
 exclude = ["conda-libmamba-solver"]
 docs-url = "https://example.com/demo/"
 ```
 
-If `source-environment` is omitted, conda-ship first looks for a solved
-environment named `runtime`. If that is not present, it uses the lockfile's
-default environment.
+If `source-environment` is omitted, conda-ship fails. That keeps release builds
+from accidentally packaging a default, development, or test environment.
 
-conda-ship derives a runtime lock that contains only the selected runtime
+conda-ship derives a runtime lock that contains only the selected source
 environment, renamed to `default` for the generated runtime. The derived lock is
 stamped into staged runtimes and copied into the staged artifact directory. It
 is build output, not another source project lockfile.
@@ -65,19 +65,20 @@ name = "demo"
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64", "win-64"]
 
-[feature.runtime.dependencies]
+[feature.ship.dependencies]
 python = ">=3.12"
 conda = ">=25.1"
 conda-rattler-solver = "*"
 conda-spawn = ">=0.1.0"
 
 [environments]
-runtime = { features = ["runtime"], no-default-feature = true }
+ship = { features = ["ship"], no-default-feature = true }
 
 [tool.conda-ship]
-command = "demo"
+runtime = "demo"
+delegate = "conda"
 layout = "online"
-source-environment = "runtime"
+source-environment = "ship"
 exclude = ["conda-libmamba-solver"]
 ```
 
@@ -93,9 +94,9 @@ metadata for status output.
 
 For conda-workspaces projects that keep conda config in `pyproject.toml`, use
 `[tool.conda.*]` table names, such as `[tool.conda.workspace]` and
-`[tool.conda.feature.runtime.dependencies]`. For Pixi projects, use Pixi's
+`[tool.conda.feature.ship.dependencies]`. For Pixi projects, use Pixi's
 `[tool.pixi.*]` table names, such as `[tool.pixi.workspace]` and
-`[tool.pixi.feature.runtime.dependencies]`. `[tool.conda-ship]` remains a separate
+`[tool.pixi.feature.ship.dependencies]`. `[tool.conda-ship]` remains a separate
 tool table because it configures conda-ship, not the workspace solver.
 
 ## CLI Entry Points
@@ -124,8 +125,8 @@ The downstream project manifest lives in the downstream repository. The
 conda-ship builder and generic runtime template come from the conda-ship
 release or package installation.
 
-`cs build` copies the selected template, stamps the copy with the command
-name, install scheme and install name, runtime lock, metadata, and optional
+`cs build` copies the selected template, stamps the copy with the runtime name,
+delegate, install scheme, install name, runtime lock, metadata, and optional
 embedded bundle. That stamped copy is the runtime. conda-ship then writes the
 staged artifacts to the downstream project's output directory. Source checkouts
 can omit `--template` while changing conda-ship itself; that fallback builds

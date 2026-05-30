@@ -29,22 +29,22 @@ runtime artifacts.
 A runtime is the executable that users run after conda-ship finishes.
 Examples include `demo`, `demoz`, `cx`, and `cxz`.
 
-The command name is the base command name for that runtime. It can come from
-`[tool.conda-ship].command` or `--command`, and it is not a conda environment
+The runtime name is the base executable name for that runtime. It can come from
+`[tool.conda-ship].runtime` or `--runtime`, and it is not a conda environment
 name. The `embedded` layout adds the `z` suffix to the staged executable name
 because that variant contains compressed package archives.
 
-Use "runtime" for the thing conda-ship produces, "command name" for the
-resolved executable name, and "artifact" for the release files written to
-`dist/`.
+Use "runtime" for the executable conda-ship produces, "delegate" for the
+executable inside the managed prefix that receives pass-through arguments, and
+"artifact" for the release files written to `dist/`.
 
 ## Runtime Template
 
 `conda-ship-runtime` is an internal generic binary target. It is not a first-party
 distribution. During `cs build`, the builder copies a generic runtime
-template under the resolved command name and stamps the copy with the
-downstream command name, install scheme and install name, metadata filename, environment variable
-names, runtime lock, and optional bundle. The stamped copy is the runtime.
+template under the resolved runtime name and stamps the copy with the runtime
+name, delegate, install scheme, install name, metadata filename, environment
+variable names, runtime lock, and optional bundle. The stamped copy is the runtime.
 Released builds use prebuilt template assets; source checkouts can build the
 template locally as a development fallback.
 
@@ -68,8 +68,8 @@ The generated runtime can install from:
 
 Bundles contain downloaded conda package archives.
 
-The `external` layout pairs a runtime with `COMMAND.bundle.tar.zst`. The
-`embedded` layout appends `z` to the command name and includes the compressed
+The `external` layout pairs a runtime with `RUNTIME.bundle.tar.zst`. The
+`embedded` layout appends `z` to the runtime name and includes the compressed
 bundle inside the runtime.
 
 An embedded runtime automatically uses its bundled archives during

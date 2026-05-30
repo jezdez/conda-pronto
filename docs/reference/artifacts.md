@@ -8,15 +8,15 @@ workflows run after conda-ship writes these files.
 
 | Layout | Runtime | Bundle file | Network during bootstrap |
 | --- | --- | --- | --- |
-| `online` | `COMMAND` | none | yes |
-| `external` | `COMMAND` | `COMMAND.bundle.tar.zst` | optional |
-| `embedded` | `COMMANDz` | embedded in binary | no |
+| `online` | `RUNTIME` | none | yes |
+| `external` | `RUNTIME` | `RUNTIME.bundle.tar.zst` | optional |
+| `embedded` | `RUNTIMEz` | embedded in binary | no |
 
 On Windows, binary filenames also include `.exe`.
 
 ## Metadata Files
 
-For an `online` build with command `demo`, conda-ship stages:
+For an `online` build with runtime `demo`, conda-ship stages:
 
 - `demo` or `demo.exe`
 - `demo.runtime.lock`
@@ -36,7 +36,7 @@ target-qualified equivalent.
 ## Stamped Runtime Data
 
 conda-ship appends a runtime data block to every staged runtime. The block
-contains the runtime lock, runtime metadata, command names, install scheme,
+contains the runtime lock, runtime name, delegate executable, install scheme,
 install name, docs URL, bundle environment variable names, and the embedded
 bundle bytes for `embedded` builds.
 
