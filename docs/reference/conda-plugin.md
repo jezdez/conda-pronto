@@ -9,7 +9,7 @@ builder:
 ```bash
 conda pronto lock
 conda pronto inspect
-conda pronto build --layout online --name serpe --template ./pronto-runtime-template
+conda pronto build --layout online --name demo --template ./pronto-runtime-template
 ```
 
 `conda pronto ...` runs the installed `pronto` executable with the same
@@ -40,7 +40,7 @@ Arguments after `conda pronto` are passed to `pronto`:
 ```bash
 conda pronto build \
   --layout embedded \
-  --name serpe \
+  --name demo \
   --template ./pronto-runtime-template
 ```
 

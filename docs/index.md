@@ -19,8 +19,8 @@ artifacts, and the generated runtime command:
 
 ```bash
 pronto lock
-pronto build --layout online --name serpe
-pronto run --name serpe -- bootstrap --prefix /tmp/serpe
+pronto build --layout online --name demo
+pronto run --name demo -- bootstrap --prefix /tmp/demo
 ```
 
 Then use the documentation by the kind of help you need.

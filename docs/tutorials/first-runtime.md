@@ -1,9 +1,9 @@
 # Build Your First Runtime
 
-This tutorial builds a local conda bootstrap binary named `serpe` and runs it
+This tutorial builds a local conda bootstrap binary named `demo` and runs it
 against a temporary prefix.
 
-`serpe` is the example binary name. conda-pronto itself provides the builder and
+`demo` is the example binary name. conda-pronto itself provides the builder and
 generic runtime; it does not publish a default runtime binary.
 
 ## Prerequisites
@@ -44,24 +44,24 @@ Build a binary that contains lockfile metadata but downloads package archives
 during bootstrap:
 
 ```bash
-pronto build --layout online --name serpe
+pronto build --layout online --name demo
 ```
 
-The staged files are written to `dist/`. The binary is named `serpe` on Unix
-and `serpe.exe` on Windows.
+The staged files are written to `dist/`. The binary is named `demo` on Unix
+and `demo.exe` on Windows.
 
 ## Smoke Test The Runtime
 
 Run the staged binary through conda-pronto:
 
 ```bash
-pronto run --name serpe -- bootstrap --prefix /tmp/serpe
+pronto run --name demo -- bootstrap --prefix /tmp/demo
 ```
 
 Then ask the generated runtime for status:
 
 ```bash
-dist/serpe status --prefix /tmp/serpe
+dist/demo status --prefix /tmp/demo
 ```
 
 The status output reports the binary name, prefix, configured channels,
@@ -72,16 +72,16 @@ configured package specs, installed package count, and conda executable path.
 Build an artifact that carries compressed package archives inside the binary:
 
 ```bash
-pronto build --layout embedded --name serpe
+pronto build --layout embedded --name demo
 ```
 
 The embedded artifact uses the `z` suffix, so the binary is staged as
-`dist/serpez` on Unix and `dist/serpez.exe` on Windows.
+`dist/demoz` on Unix and `dist/demoz.exe` on Windows.
 
 Run the embedded artifact the same way:
 
 ```bash
-dist/serpez bootstrap --prefix /tmp/serpez
+dist/demoz bootstrap --prefix /tmp/demoz
 ```
 
 The embedded bundle is detected automatically. No `--bundle` or `--offline`

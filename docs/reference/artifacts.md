@@ -16,21 +16,21 @@ On Windows, binary filenames also include `.exe`.
 
 ## Metadata Files
 
-For an `online` build named `serpe`, conda-pronto stages:
+For an `online` build named `demo`, conda-pronto stages:
 
-- `serpe` or `serpe.exe`
-- `serpe.runtime.lock`
-- `serpe.packages.txt`
-- `serpe.info.json`
-- `serpe.sha256`
+- `demo` or `demo.exe`
+- `demo.runtime.lock`
+- `demo.packages.txt`
+- `demo.info.json`
+- `demo.sha256`
 
 When `--target-label` is used, the label is inserted into the stem, for example
-`serpe-linux-64.info.json`.
+`demo-linux-64.info.json`.
 
 For an `embedded` build, the stem uses the `z` suffix, for example
-`serpez.info.json` or `serpez-linux-64.info.json`.
+`demoz.info.json` or `demoz-linux-64.info.json`.
 
-For an `external` build, conda-pronto also stages `serpe.bundle.tar.zst` or a
+For an `external` build, conda-pronto also stages `demo.bundle.tar.zst` or a
 target-qualified equivalent.
 
 ## Stamped Runtime Data

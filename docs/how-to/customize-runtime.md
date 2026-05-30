@@ -23,13 +23,13 @@ The runtime name becomes part of the user interface:
 - the offline environment variable, `NAME_OFFLINE`
 
 For environment variables, non-alphanumeric characters are converted to
-underscores. A runtime named `serpe` uses `SERPE_BUNDLE` and
-`SERPE_OFFLINE`.
+underscores. A runtime named `demo` uses `DEMO_BUNDLE` and
+`DEMO_OFFLINE`.
 
 Use a product-specific name:
 
 ```bash
-pronto build --layout online --name serpe
+pronto build --layout online --name demo
 ```
 
 Avoid publishing downstream builds as `cx` or `cxz`. In the conda ecosystem,
@@ -58,7 +58,7 @@ intent in the workspace sections and put conda-pronto-specific build policy in
 
 ```toml
 [workspace]
-name = "serpe"
+name = "demo"
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64", "win-64"]
 
@@ -76,7 +76,7 @@ runtime = { features = ["runtime"], no-default-feature = true }
 [tool.pronto]
 environment = "runtime"
 exclude = ["conda-libmamba-solver"]
-docs-url = "https://example.com/serpe/"
+docs-url = "https://example.com/demo/"
 ```
 
 Then refresh the source lockfile and derive conda-pronto's runtime lock from the
@@ -116,7 +116,7 @@ pronto lock
 Build the named runtime:
 
 ```bash
-pronto build --layout online --name serpe --template ./pronto-runtime-template
+pronto build --layout online --name demo --template ./pronto-runtime-template
 ```
 
 The staged binary and metadata files are written to `dist/`.
@@ -132,9 +132,9 @@ at that project root:
 - uses: jezdez/conda-pronto@v0.1.0
   id: pronto
   with:
-    name: serpe
+    name: demo
     root: .
-    docs-url: "https://example.com/serpe/"
+    docs-url: "https://example.com/demo/"
 ```
 
 The action does not run `pronto configure`, `pixi lock`, or any other solve
@@ -148,12 +148,12 @@ package archives inside itself:
 ```bash
 pronto build \
   --layout embedded \
-  --name serpe \
+  --name demo \
   --template ./pronto-runtime-template
 ```
 
 The embedded artifact uses the `z` suffix, so the staged binary is
-`dist/serpez` on Unix and `dist/serpez.exe` on Windows.
+`dist/demoz` on Unix and `dist/demoz.exe` on Windows.
 
 The embedded runtime detects its built-in bundle automatically during
 `bootstrap`; users do not need to pass `--bundle` or `--offline`.

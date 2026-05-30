@@ -35,7 +35,7 @@ The solved environment used for the runtime is selected by
 [tool.pronto]
 environment = "runtime"
 exclude = ["conda-libmamba-solver"]
-docs-url = "https://example.com/serpe/"
+docs-url = "https://example.com/demo/"
 ```
 
 If `environment` is omitted, conda-pronto first looks for a solved environment named
@@ -53,7 +53,7 @@ conda-pronto-specific build policy in `[tool.pronto]`:
 
 ```toml
 [workspace]
-name = "serpe"
+name = "demo"
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64", "win-64"]
 

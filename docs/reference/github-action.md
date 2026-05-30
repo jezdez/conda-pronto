@@ -21,7 +21,7 @@ in CI.
 - uses: jezdez/conda-pronto@v0.1.0
   id: pronto
   with:
-    name: serpe
+    name: demo
 ```
 
 ## Inputs

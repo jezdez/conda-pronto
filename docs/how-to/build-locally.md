@@ -8,7 +8,7 @@ Installed local builds use a prebuilt runtime template:
 ```bash
 pronto build \
   --layout online \
-  --name serpe \
+  --name demo \
   --template ./pronto-runtime-template
 ```
 
@@ -57,7 +57,7 @@ pronto lock --check
 ```bash
 pronto build \
   --layout online \
-  --name serpe \
+  --name demo \
   --template ./pronto-runtime-template
 ```
 
@@ -66,7 +66,7 @@ Use `--out-dir` to stage somewhere other than `dist/`:
 ```bash
 pronto build \
   --layout online \
-  --name serpe \
+  --name demo \
   --template ./pronto-runtime-template \
   --out-dir /tmp/pronto-artifacts
 ```
@@ -80,9 +80,9 @@ Use `pronto run` to build and immediately execute the staged runtime:
 
 ```bash
 pronto run \
-  --name serpe \
+  --name demo \
   --template ./pronto-runtime-template \
-  -- bootstrap --prefix /tmp/serpe-smoke
+  -- bootstrap --prefix /tmp/demo-smoke
 ```
 
 Everything after `--` is passed to the generated runtime.
@@ -93,7 +93,7 @@ Pass both the Rust target triple and an artifact label:
 
 ```bash
 pronto build \
-  --name serpe \
+  --name demo \
   --target x86_64-unknown-linux-gnu \
   --target-label x86_64-unknown-linux-gnu \
   --template ./pronto-runtime-template-x86_64-unknown-linux-gnu

@@ -18,7 +18,7 @@ place supporting files next to the binary.
 ```bash
 pronto build \
   --layout external \
-  --name serpe \
+  --name demo \
   --template ./pronto-runtime-template
 ```
 :::
@@ -30,7 +30,7 @@ separate bundle file.
 ```bash
 pronto build \
   --layout embedded \
-  --name serpe \
+  --name demo \
   --template ./pronto-runtime-template
 ```
 :::
@@ -41,31 +41,31 @@ pronto build \
 
 For an `external` build, distribute these files together:
 
-- `serpe`
-- `serpe.bundle.tar.zst`
-- `serpe.runtime.lock`
-- `serpe.info.json`
-- `serpe.packages.txt`
-- `serpe.sha256`
+- `demo`
+- `demo.bundle.tar.zst`
+- `demo.runtime.lock`
+- `demo.info.json`
+- `demo.packages.txt`
+- `demo.sha256`
 
 Point the runtime at an extracted bundle directory:
 
 ```bash
-mkdir -p /opt/serpe-bundle
-tar -I zstd -xf serpe.bundle.tar.zst -C /opt/serpe-bundle
-serpe bootstrap --prefix /opt/serpe --bundle /opt/serpe-bundle --offline
+mkdir -p /opt/demo-bundle
+tar -I zstd -xf demo.bundle.tar.zst -C /opt/demo-bundle
+demo bootstrap --prefix /opt/demo --bundle /opt/demo-bundle --offline
 ```
 
 conda-pronto also stamps a distribution-specific bundle environment variable into the
-runtime. For a distribution named `serpe`, that variable is
-`SERPE_BUNDLE`.
+runtime. For a distribution named `demo`, that variable is
+`DEMO_BUNDLE`.
 
 ## Bootstrap From An Embedded Bundle
 
 An embedded artifact carries the bundle inside the binary:
 
 ```bash
-serpez bootstrap --prefix /opt/serpe
+demoz bootstrap --prefix /opt/demo
 ```
 
 The runtime extracts the compressed package archives to a temporary directory

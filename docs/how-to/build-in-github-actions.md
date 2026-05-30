@@ -31,7 +31,7 @@ jobs:
       - uses: jezdez/conda-pronto@v0.1.0
         id: pronto
         with:
-          name: serpe
+          name: demo
 
       - uses: actions/upload-artifact@v4
         with:
@@ -58,8 +58,8 @@ steps:
   - uses: jezdez/conda-pronto@v0.1.0
     id: pronto
     with:
-      name: serpe
-      root: dist/serpe
+      name: demo
+      root: dist/demo
 ```
 
 The action does not run a solve, generate a manifest, or refresh a lockfile.
@@ -74,12 +74,12 @@ access:
 - uses: jezdez/conda-pronto@v0.1.0
   id: pronto
   with:
-    name: serpe
+    name: demo
     layout: embedded
 ```
 
-The output binary uses the `z` suffix, for example `serpez` on Unix or
-`serpez.exe` on Windows.
+The output binary uses the `z` suffix, for example `demoz` on Unix or
+`demoz.exe` on Windows.
 
 ## Matrix Builds
 
@@ -99,7 +99,7 @@ steps:
   - uses: jezdez/conda-pronto@v0.1.0
     id: pronto
     with:
-      name: serpe
+      name: demo
 ```
 
 Each job emits an asset name qualified with the runner target triple.

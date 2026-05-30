@@ -64,7 +64,7 @@ In Pixi's `pyproject.toml` layout, the same Pixi sections live below
 [tool.pronto]
 environment = "runtime"
 exclude = ["conda-libmamba-solver"]
-docs-url = "https://example.com/serpe/"
+docs-url = "https://example.com/demo/"
 ```
 
 `environment`

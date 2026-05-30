@@ -23,9 +23,9 @@ developing conda-pronto itself:
 ```bash
 pronto lock
 pronto inspect
-pronto build --layout online --name serpe --template ./pronto-runtime-template
-pronto build --layout embedded --name serpe --template ./pronto-runtime-template
-pronto run --name serpe -- bootstrap --prefix /tmp/serpe-smoke
+pronto build --layout online --name demo --template ./pronto-runtime-template
+pronto build --layout embedded --name demo --template ./pronto-runtime-template
+pronto run --name demo -- bootstrap --prefix /tmp/demo-smoke
 ```
 
 Every `pronto build` writes the staged binary plus artifact metadata: the
