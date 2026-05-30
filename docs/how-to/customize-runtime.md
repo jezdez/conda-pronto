@@ -53,8 +53,9 @@ not choose one for every runtime.
 ## Configure Local Build Input
 
 When a project carries `conda.toml` and `conda.lock`, keep package and channel
-intent in the workspace sections and put conda-pronto-specific build policy in
-`[tool.pronto]`:
+intent in the
+{external+conda-workspaces:doc}`conda workspace sections <reference/conda-toml-spec>`
+and put conda-pronto-specific build policy in `[tool.pronto]`:
 
 ```toml
 [workspace]
@@ -79,8 +80,9 @@ exclude = ["conda-libmamba-solver"]
 docs-url = "https://example.com/demo/"
 ```
 
-Then refresh the source lockfile and derive conda-pronto's runtime lock from the
-same project:
+Then refresh the source lockfile with
+{external+conda-workspaces:doc}`conda workspace lock <reference/cli>` and derive
+conda-pronto's runtime lock from the same project:
 
 ```bash
 conda workspace lock

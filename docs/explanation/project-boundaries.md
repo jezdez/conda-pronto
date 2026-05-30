@@ -83,7 +83,7 @@ conda-pronto complements other conda ecosystem tools:
 
 | Tool | Role |
 | --- | --- |
-| conda-workspaces | Defines conda-native workspace manifests and lockfiles that conda-pronto can consume |
+| {external+conda-workspaces:doc}`conda-workspaces <index>` | Defines conda-native workspace manifests and lockfiles that conda-pronto can consume |
 | Pixi | Solves and records compatible runtime environments that conda-pronto can consume |
 | rattler-build | Builds conda packages |
 | constructor | Builds OS installers |

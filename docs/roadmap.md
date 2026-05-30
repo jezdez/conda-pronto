@@ -34,8 +34,9 @@ builds:
 - `[tool.pronto].environment` chooses which solved environment becomes the
   runtime.
 - `[tool.pronto].exclude` records post-solve pruning policy.
-- Package and channel intent comes from conda workspace sections when
-  `conda.toml` is available.
+- Package and channel intent comes from
+  {external+conda-workspaces:doc}`conda workspace sections <reference/conda-toml-spec>`
+  when `conda.toml` is available.
 - `conda-pronto` provides a `conda pronto` adapter while preserving
   `pronto` as the primary CLI.
 

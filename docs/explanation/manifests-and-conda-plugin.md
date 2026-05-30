@@ -8,9 +8,9 @@ and turns it into bootstrap binaries.
 
 ## Manifest Priority
 
-conda-pronto treats `conda.toml` as the preferred project manifest. `pixi.toml`
-and Pixi's `pyproject.toml` layout remain compatibility inputs for existing
-Pixi-based downstream workflows.
+conda-pronto treats {external+conda-workspaces:doc}`conda.toml <reference/conda-toml-spec>`
+as the preferred project manifest. `pixi.toml` and Pixi's `pyproject.toml`
+layout remain compatibility inputs for existing Pixi-based downstream workflows.
 
 Inside a build root, conda-pronto looks for manifests in this order:
 
@@ -48,8 +48,9 @@ lockfile.
 
 ## Conda Workspace Shape
 
-A conda-native conda-pronto project puts conda intent in the workspace schema and
-conda-pronto-specific build policy in `[tool.pronto]`:
+A conda-native conda-pronto project puts conda intent in the
+{external+conda-workspaces:doc}`conda-workspaces schema <reference/conda-toml-spec>`
+and conda-pronto-specific build policy in `[tool.pronto]`:
 
 ```toml
 [workspace]
@@ -75,8 +76,9 @@ exclude = ["conda-libmamba-solver"]
 into a runtime, which packages to prune after the solve, artifact naming
 policy, bundle policy, and runtime documentation links.
 
-Package and channel intent belongs in the conda workspace sections when that
-manifest is available. The older `[tool.pronto].packages` and
+Package and channel intent belongs in the
+{external+conda-workspaces:doc}`conda workspace sections <reference/conda-toml-spec>`
+when that manifest is available. The older `[tool.pronto].packages` and
 `[tool.pronto].channels` fields remain compatibility metadata for the
 Pixi-oriented workflow and for runtime status output.
 

@@ -18,7 +18,8 @@ compatible `pixi.toml`/`pixi.lock` pair, or Pixi's `pyproject.toml` with
 files, runtime binaries, and artifact metadata.
 
 The selected source lockfile is the source of the concrete conda package
-records. conda-pronto is not a replacement for conda-workspaces, Pixi, or any other
+records. conda-pronto is not a replacement for
+{external+conda-workspaces:doc}`conda-workspaces <index>`, Pixi, or any other
 workspace solver; it consumes a solved environment and turns it into bootstrap
 artifacts.
 

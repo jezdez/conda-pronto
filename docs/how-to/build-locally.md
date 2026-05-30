@@ -28,8 +28,9 @@ Run this after changing `conda.lock`, `pixi.lock`, or `[tool.pronto]`:
 pronto lock
 ```
 
-If you changed the `runtime` environment in `conda.toml`, refresh the source
-lockfile before deriving conda-pronto's runtime lock:
+If you changed the `runtime` environment in `conda.toml`, use
+{external+conda-workspaces:doc}`conda workspace lock <reference/cli>` to refresh
+the source lockfile before deriving conda-pronto's runtime lock:
 
 ```bash
 conda workspace lock

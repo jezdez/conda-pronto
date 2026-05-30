@@ -94,7 +94,9 @@ packages = [
 
 `packages`
 : Specs shown in runtime metadata and used for live solves with `--no-lock`.
-  Prefer conda workspace dependency sections for `conda.toml` projects.
+  Prefer
+  {external+conda-workspaces:doc}`conda workspace dependency sections <reference/conda-toml-spec>`
+  for `conda.toml` projects.
 
 `channels`
 : Channels written into runtime metadata and the installed `.condarc` when the
