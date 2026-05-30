@@ -3,15 +3,15 @@ members = ["."]
 default-members = ["."]
 
 [package]
-name = "conda-pronto"
+name = "conda-ship"
 version = "0.1.0"
 edition = "2024"
 description = "Build ready-to-run conda runtimes"
 license = "BSD-3-Clause"
 readme = "README.md"
-repository = "https://github.com/jezdez/conda-pronto"
-homepage = "https://jezdez.github.io/conda-pronto/"
-documentation = "https://jezdez.github.io/conda-pronto/"
+repository = "https://github.com/jezdez/conda-ship"
+homepage = "https://jezdez.github.io/conda-ship/"
+documentation = "https://jezdez.github.io/conda-ship/"
 keywords = ["conda", "bootstrap", "installer", "runtime"]
 include = [
   "/Cargo.lock",
@@ -26,24 +26,23 @@ include = [
   "/tests/*.rs",
   "/tests/snapshots/*.snap",
 ]
-publish = ["crates-io"]
-default-run = "pronto"
+publish = false
+default-run = "cs"
 
 [[bin]]
-name = "pronto-runtime"
+name = "conda-ship-runtime"
 path = "src/main.rs"
 required-features = ["runtime-template"]
 
 [[bin]]
-name = "pronto"
-path = "src/bin/pronto.rs"
+name = "cs"
+path = "src/bin/cs.rs"
 
 [features]
 default = ["rustls-tls"]
 native-tls = [
   "reqwest/native-tls",
   "rattler/native-tls",
-  "rattler_repodata_gateway/native-tls",
   "rattler_networking/native-tls",
   "rattler_cache/native-tls",
 ]
@@ -54,7 +53,6 @@ rustls-tls = [
 ]
 online_tests = []
 runtime-template = []
-slow_tests = []
 
 [dependencies]
 clap = { version = "4.6", features = ["derive"] }
@@ -68,9 +66,6 @@ rattler_cache = { version = "0.8", default-features = false }
 rattler_conda_types = { version = "0.46", default-features = false }
 rattler_lock = { version = "0.30", default-features = false }
 rattler_networking = { version = "0.27", default-features = false }
-rattler_repodata_gateway = { version = "0.29", default-features = false, features = ["gateway"] }
-rattler_solve = { version = "7.1", default-features = false, features = ["resolvo"] }
-rattler_virtual_packages = { version = "2.4", default-features = false }
 reqwest = { version = "0.13", default-features = false, features = ["stream"] }
 reqwest-middleware = { package = "astral-reqwest-middleware", version = "0.5" }
 rustls = { version = "0.23", default-features = false, features = ["std", "tls12"], optional = true }
@@ -79,7 +74,6 @@ serde_json = "1"
 sha2 = "0.10"
 tokio = { version = "1.52", features = ["rt-multi-thread", "macros"] }
 toml = "1.1"
-toml_edit = "0.25"
 tar = "0.4"
 tempfile = "3"
 tracing = "0.1"

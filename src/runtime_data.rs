@@ -1,4 +1,4 @@
-//! Runtime data stamped onto generated conda-pronto artifacts.
+//! Runtime data stamped onto generated conda-ship artifacts.
 //!
 //! This module is shared by the builder and runtime binaries. The builder uses
 //! the writer path, while the runtime uses the reader path.
@@ -10,7 +10,7 @@ use std::sync::LazyLock;
 
 use sha2::{Digest, Sha256};
 
-const FOOTER_MAGIC: &[u8; 16] = b"PRONTO_DATA_V001";
+const FOOTER_MAGIC: &[u8; 16] = b"CONDA_SHIP_V0001";
 const FORMAT_VERSION: u32 = 1;
 const FOOTER_LEN: usize = 8 + 8 + 32 + 32 + 4 + FOOTER_MAGIC.len();
 #[allow(dead_code)]
@@ -84,7 +84,7 @@ impl RuntimeDataHeader {
             metadata_file: format!(".{name}.json"),
             bundle_env_var: runtime_env_var(name, "BUNDLE"),
             offline_env_var: runtime_env_var(name, "OFFLINE"),
-            docs_url: "https://jezdez.github.io/conda-pronto/".to_string(),
+            docs_url: "https://jezdez.github.io/conda-ship/".to_string(),
             install_method: None,
             runtime_config: RuntimeConfig::default(),
             runtime_lock: String::new(),
@@ -94,7 +94,7 @@ impl RuntimeDataHeader {
 
 impl Default for RuntimeDataHeader {
     fn default() -> Self {
-        Self::for_name("pronto-runtime")
+        Self::for_name("conda-ship-runtime")
     }
 }
 
@@ -141,7 +141,7 @@ pub struct RuntimeData {
 static CURRENT_RUNTIME_DATA: LazyLock<RuntimeData> = LazyLock::new(|| match from_current_exe() {
     Ok(Some(data)) => data,
     Ok(None) => RuntimeData::default(),
-    Err(err) => panic!("invalid conda-pronto runtime data: {err}"),
+    Err(err) => panic!("invalid conda-ship runtime data: {err}"),
 });
 
 #[allow(dead_code)]

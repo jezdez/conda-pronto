@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand, ValueEnum};
-use rattler_conda_types::{MatchSpec, PackageName, PackageRecord, ParseMatchSpecOptions, Platform};
+use rattler_conda_types::{PackageName, PackageRecord, Platform};
 use rattler_lock::{CondaPackageData, LockFile, LockFileBuilder, PlatformData};
 use sha2::{Digest, Sha256};
 
@@ -20,13 +21,17 @@ struct ProjectManifest {
 
 #[derive(Clone, Default, serde::Deserialize)]
 struct ToolSection {
-    #[serde(default)]
-    pronto: ProntoConfig,
+    #[serde(default, rename = "conda-ship")]
+    conda_ship: ShipConfig,
 }
 
 #[derive(Clone, Default, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
-struct ProntoConfig {
+struct ShipConfig {
+    #[serde(default)]
+    command: Option<String>,
+    #[serde(default)]
+    layout: Option<BundleLayout>,
     #[serde(default)]
     exclude: Vec<String>,
     #[serde(default, rename = "source-environment")]
@@ -50,7 +55,7 @@ struct RuntimeStampConfig {
 }
 
 #[derive(Parser)]
-#[command(name = "pronto", about = "Build ready-to-run conda runtimes")]
+#[command(name = "cs", about = "Build ready-to-run conda runtimes")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -58,22 +63,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Derive the runtime lock from the configured lockfile environment and filters
-    Lock {
-        /// Only verify that the runtime lock can be derived; do not write it
-        #[arg(long)]
-        check: bool,
-
-        /// Project root (default: auto-detect from current directory)
-        #[arg(long)]
-        root: Option<PathBuf>,
-    },
-
     /// Download packages from the derived runtime lock and bundle them
     Bundle {
         /// Target platform (default: current)
         #[arg(long)]
         platform: Option<String>,
+
+        /// Preview the bundle operation without downloading or writing files
+        #[arg(long)]
+        dry_run: bool,
 
         /// Project root (default: auto-detect from current directory)
         #[arg(long)]
@@ -83,12 +81,12 @@ enum Command {
     /// Build and stage a ready-to-run runtime
     Build {
         /// Artifact layout to produce
-        #[arg(long, value_enum, default_value_t = BundleLayout::Online)]
-        layout: BundleLayout,
+        #[arg(long, value_enum)]
+        layout: Option<BundleLayout>,
 
         /// Command name to stage for the generated runtime
         #[arg(long)]
-        command: String,
+        command: Option<String>,
 
         /// Optional target label appended to staged artifact names
         #[arg(long)]
@@ -122,6 +120,10 @@ enum Command {
         #[arg(long, default_value = "dist")]
         out_dir: PathBuf,
 
+        /// Preview the build without compiling, downloading, or writing files
+        #[arg(long)]
+        dry_run: bool,
+
         /// Project root (default: auto-detect from current directory)
         #[arg(long)]
         root: Option<PathBuf>,
@@ -130,12 +132,12 @@ enum Command {
     /// Build and run a staged runtime for local smoke testing
     Run {
         /// Artifact layout to produce before running
-        #[arg(long, value_enum, default_value_t = BundleLayout::Online)]
-        layout: BundleLayout,
+        #[arg(long, value_enum)]
+        layout: Option<BundleLayout>,
 
         /// Command name to stage for the generated runtime
         #[arg(long)]
-        command: String,
+        command: Option<String>,
 
         /// Conda platform to bundle/describe (default: current)
         #[arg(long)]
@@ -170,7 +172,7 @@ enum Command {
         args: Vec<OsString>,
     },
 
-    /// Inspect the derived runtime lock
+    /// Inspect project input and derived runtime packages without writing files
     Inspect {
         /// Conda platform to inspect (default: current)
         #[arg(long)]
@@ -184,33 +186,16 @@ enum Command {
         #[arg(long)]
         root: Option<PathBuf>,
     },
-
-    /// Patch runtime environment packages, channels, or excludes in the project manifest
-    Configure {
-        /// Conda package matchspec to include; repeat for multiple packages
-        #[arg(long = "package")]
-        packages: Vec<String>,
-
-        /// Conda channel name or URL to use; repeat for multiple channels
-        #[arg(long = "channel")]
-        channels: Vec<String>,
-
-        /// Package name to exclude at runtime; repeat for multiple packages
-        #[arg(long = "exclude")]
-        exclude: Vec<String>,
-
-        /// Project root (default: auto-detect from current directory)
-        #[arg(long)]
-        root: Option<PathBuf>,
-    },
 }
 
-const PRONTO_STATE_DIR: &str = "target/pronto";
+const SHIP_STATE_DIR: &str = "target/conda-ship";
 const RUNTIME_LOCK_FILE: &str = "runtime.lock";
 const BUNDLE_ARCHIVE_FILE: &str = "bundle.tar.zst";
+const RUNTIME_TEMPLATE_ENV: &str = "CONDA_SHIP_TEMPLATE";
 const REQUIRED_RUNTIME_PACKAGES: &[&str] = &["conda", "conda-spawn", "conda-rattler-solver"];
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 enum BundleLayout {
     /// Binary contains lock/metadata; packages download during bootstrap.
     Online,
@@ -253,65 +238,56 @@ fn find_project_root(start: &Path) -> Option<PathBuf> {
 }
 
 struct DerivedRuntimeLock {
+    input: ProjectInput,
     lock_file: LockFile,
     content: String,
+    source_environment: String,
     runtime_config: RuntimeStampConfig,
     platforms: Vec<Platform>,
     total_packages: usize,
     total_excluded: usize,
+    removed_excludes: Vec<String>,
 }
 
+#[derive(Clone)]
 struct ProjectInput {
+    manifest_path: PathBuf,
+    manifest_kind: ManifestKind,
     lock_path: PathBuf,
-    config: ProntoConfig,
+    config: ShipConfig,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ManifestKind {
     CondaToml,
     PixiToml,
+    CondaPyproject,
     PixiPyproject,
 }
 
 impl ManifestKind {
+    fn manifest_label(self) -> &'static str {
+        match self {
+            Self::CondaToml => "conda.toml",
+            Self::PixiToml => "pixi.toml",
+            Self::CondaPyproject => "pyproject.toml [tool.conda]",
+            Self::PixiPyproject => "pyproject.toml [tool.pixi]",
+        }
+    }
+
     fn lockfile_name(self) -> &'static str {
         match self {
-            Self::CondaToml => "conda.lock",
+            Self::CondaToml | Self::CondaPyproject => "conda.lock",
             Self::PixiToml | Self::PixiPyproject => "pixi.lock",
         }
     }
 
     fn lock_command(self) -> &'static str {
         match self {
-            Self::CondaToml => "conda workspace lock",
+            Self::CondaToml | Self::CondaPyproject => "conda workspace lock",
             Self::PixiToml | Self::PixiPyproject => "pixi lock",
         }
     }
-}
-
-fn write_runtime_lock(check: bool, root_override: Option<PathBuf>) {
-    let root = project_root(root_override.as_deref());
-    let derived = derive_runtime_lock(&root);
-
-    if check {
-        eprintln!(
-            "runtime lock can be derived: {} packages across {} platforms (excluded {})",
-            derived.total_packages,
-            derived.platforms.len(),
-            derived.total_excluded
-        );
-        return;
-    }
-
-    let runtime_lock_path = generated_runtime_lock_path(&root);
-    write_generated_runtime_lock(&runtime_lock_path, &derived.content);
-    eprintln!(
-        "wrote {}: {} packages across {} platforms (excluded {})",
-        runtime_lock_path.display(),
-        derived.total_packages,
-        derived.platforms.len(),
-        derived.total_excluded
-    );
 }
 
 fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
@@ -321,25 +297,32 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
 
     let lock_file = parse_lock(&lock_content, &input.lock_path);
 
-    let runtime_env = if let Some(source_environment) = input.config.source_environment.as_deref() {
-        lock_file
-            .environment(source_environment)
-            .unwrap_or_else(|| {
-                panic!(
-                    "source environment {source_environment:?} not found in {}",
-                    input.lock_path.display()
-                )
-            })
-    } else if let Some(environment) = lock_file.environment("runtime") {
-        environment
-    } else {
-        lock_file.default_environment().unwrap_or_else(|| {
-            panic!(
-                "no runtime or default environment found in {}",
-                input.lock_path.display()
+    let (source_environment, runtime_env) =
+        if let Some(source_environment) = input.config.source_environment.as_deref() {
+            (
+                source_environment.to_string(),
+                lock_file
+                    .environment(source_environment)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "source environment {source_environment:?} not found in {}",
+                            input.lock_path.display()
+                        )
+                    }),
             )
-        })
-    };
+        } else if let Some(environment) = lock_file.environment("runtime") {
+            ("runtime".to_string(), environment)
+        } else {
+            (
+                "default".to_string(),
+                lock_file.default_environment().unwrap_or_else(|| {
+                    panic!(
+                        "no runtime or default environment found in {}",
+                        input.lock_path.display()
+                    )
+                }),
+            )
+        };
 
     let platform_data: Vec<_> = runtime_env
         .platforms()
@@ -367,6 +350,7 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
 
     let mut total_packages = 0usize;
     let mut total_excluded = 0usize;
+    let mut removed_excludes = HashSet::new();
     let mut resolved_package_names = HashSet::new();
 
     for (platform, packages) in runtime_env.conda_packages_by_platform() {
@@ -376,14 +360,7 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
             pkgs
         } else {
             let (kept, removed) = filter_excluded(&pkgs, &input.config.exclude);
-            if !removed.is_empty() {
-                eprintln!(
-                    "  {}: excluded {} packages ({})",
-                    platform.name(),
-                    removed.len(),
-                    removed.join(", ")
-                );
-            }
+            removed_excludes.extend(removed.iter().cloned());
             total_excluded += removed.len();
             kept
         };
@@ -399,6 +376,8 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
     }
     let mut runtime_packages: Vec<_> = resolved_package_names.into_iter().collect();
     runtime_packages.sort();
+    let mut removed_excludes: Vec<_> = removed_excludes.into_iter().collect();
+    removed_excludes.sort();
 
     let new_lock = builder.finish();
     let new_content = new_lock
@@ -406,8 +385,10 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
         .expect("failed to render runtime lock");
 
     DerivedRuntimeLock {
+        input: input.clone(),
         lock_file: new_lock,
         content: new_content,
+        source_environment,
         runtime_config: RuntimeStampConfig {
             channels: runtime_channels,
             packages: runtime_packages,
@@ -419,6 +400,7 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
         platforms,
         total_packages,
         total_excluded,
+        removed_excludes,
     }
 }
 
@@ -459,8 +441,10 @@ fn discover_project_input(root: &Path) -> ProjectInput {
         .unwrap_or_else(|e| panic!("failed to parse {}: {e}", manifest_path.display()));
 
     ProjectInput {
+        manifest_path,
+        manifest_kind: kind,
         lock_path,
-        config: config.tool.pronto,
+        config: config.tool.conda_ship,
     }
 }
 
@@ -473,7 +457,7 @@ fn discover_manifest_path(root: &Path) -> PathBuf {
         root.join("pyproject.toml")
     } else {
         panic!(
-            "could not find conda.toml, pixi.toml, or Pixi pyproject.toml in {}",
+            "could not find conda.toml, pixi.toml, or supported pyproject.toml in {}",
             root.display()
         );
     }
@@ -489,24 +473,35 @@ fn manifest_kind(manifest_path: &Path) -> ManifestKind {
     match manifest_path.file_name().and_then(|n| n.to_str()) {
         Some("conda.toml") => ManifestKind::CondaToml,
         Some("pixi.toml") => ManifestKind::PixiToml,
-        Some("pyproject.toml") => ManifestKind::PixiPyproject,
+        Some("pyproject.toml") => pyproject_manifest_kind(manifest_path)
+            .unwrap_or_else(|| panic!("unsupported pyproject.toml: {}", manifest_path.display())),
         _ => panic!("unsupported manifest path: {}", manifest_path.display()),
     }
 }
 
 fn is_supported_pyproject_manifest(path: &Path) -> bool {
+    pyproject_manifest_kind(path).is_some()
+}
+
+fn pyproject_manifest_kind(path: &Path) -> Option<ManifestKind> {
     if !path.exists() {
-        return false;
+        return None;
     }
 
     let Ok(content) = std::fs::read_to_string(path) else {
-        return false;
+        return None;
     };
     let Ok(value) = toml::from_str::<toml::Value>(&content) else {
-        return false;
+        return None;
     };
 
-    has_toml_table(&value, &["tool", "pixi"])
+    if has_toml_table(&value, &["tool", "conda"]) {
+        Some(ManifestKind::CondaPyproject)
+    } else if has_toml_table(&value, &["tool", "pixi"]) {
+        Some(ManifestKind::PixiPyproject)
+    } else {
+        None
+    }
 }
 
 fn has_toml_table(value: &toml::Value, path: &[&str]) -> bool {
@@ -607,14 +602,19 @@ fn filter_excluded(
     (filtered, removed_names)
 }
 
-fn gen_bundle(platform_str: Option<String>, root_override: Option<PathBuf>) {
+fn gen_bundle(platform_str: Option<String>, dry_run: bool, root_override: Option<PathBuf>) {
     let root = project_root(root_override.as_deref());
     let derived = derive_runtime_lock(&root);
+    let platform = parse_platform(platform_str);
     let runtime_lock_path = generated_runtime_lock_path(&root);
-    write_generated_runtime_lock(&runtime_lock_path, &derived.content);
     let bundle_path = generated_bundle_path(&root);
 
-    let platform = parse_platform(platform_str);
+    if dry_run {
+        print_bundle_dry_run(&root, &derived, platform, &bundle_path);
+        return;
+    }
+
+    write_generated_runtime_lock(&runtime_lock_path, &derived.content);
     gen_bundle_from_lock(
         &derived.lock_file,
         &runtime_lock_path,
@@ -645,6 +645,7 @@ fn gen_bundle_from_lock(
             runtime_lock_path.display()
         );
     }
+    validate_bundle_package_hashes(&packages);
 
     eprintln!("downloading {} packages for {platform}...", packages.len());
 
@@ -792,6 +793,17 @@ struct BuildOutput {
     package_list: PathBuf,
 }
 
+#[derive(Debug)]
+struct PlannedArtifactPaths {
+    stem: String,
+    binary: PathBuf,
+    bundle: Option<PathBuf>,
+    info: PathBuf,
+    checksums: PathBuf,
+    lock: PathBuf,
+    package_list: PathBuf,
+}
+
 #[derive(serde::Serialize)]
 struct ArtifactChecksum {
     path: String,
@@ -814,11 +826,46 @@ struct ArtifactInfo {
 }
 
 #[derive(serde::Serialize)]
-struct LockInspect {
-    lock: String,
+struct InspectReport {
+    project: InspectProject,
+    runtime_input: InspectRuntimeInput,
+    validation: InspectValidation,
+    exclusions: InspectExclusions,
     selected_platform: String,
-    platforms: Vec<PlatformSummary>,
+    selected_package_count: usize,
+    platform_summary: Vec<PlatformSummary>,
     packages: Vec<PackageInfo>,
+}
+
+#[derive(serde::Serialize)]
+struct InspectProject {
+    root: String,
+    manifest: String,
+    manifest_kind: String,
+    lockfile: String,
+    source_environment: String,
+}
+
+#[derive(serde::Serialize)]
+struct InspectRuntimeInput {
+    channels: Vec<String>,
+    packages: Vec<String>,
+    package_count: usize,
+    platform_count: usize,
+}
+
+#[derive(serde::Serialize)]
+struct InspectValidation {
+    source_lockfile: String,
+    runtime_lock_derivation: String,
+    required_packages: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+struct InspectExclusions {
+    configured: Vec<String>,
+    removed: Vec<String>,
+    removed_count: usize,
 }
 
 #[derive(serde::Serialize)]
@@ -827,7 +874,7 @@ struct PlatformSummary {
     packages: usize,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 struct PackageInfo {
     name: String,
     version: String,
@@ -837,9 +884,9 @@ struct PackageInfo {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn build_artifact(
-    layout: BundleLayout,
-    command: String,
+fn dry_run_build_artifact(
+    layout: Option<BundleLayout>,
+    command: Option<String>,
     target_label: Option<String>,
     platform_str: Option<String>,
     target: Option<String>,
@@ -849,8 +896,7 @@ fn build_artifact(
     install_name: Option<String>,
     out_dir: PathBuf,
     root_override: Option<PathBuf>,
-) -> BuildOutput {
-    validate_command_name(&command);
+) {
     if let Some(label) = target_label.as_deref() {
         validate_target_label(label);
     }
@@ -861,6 +907,71 @@ fn build_artifact(
     let platform = parse_platform(platform_str);
 
     let mut derived = derive_runtime_lock(&root);
+    let command = resolve_runtime_command(command, &derived.input.config);
+    let layout = resolve_bundle_layout(layout, &derived.input.config);
+    validate_command_name(&command);
+    if let Some(docs_url) = docs_url {
+        derived.runtime_config.docs_url = Some(docs_url);
+    }
+    apply_install_location_overrides(&mut derived.runtime_config, scheme, install_name);
+    validate_install_location_config(&derived.runtime_config, &command);
+
+    let runtime_lock_path = generated_runtime_lock_path(&root);
+    let packages = packages_for_platform(&derived.lock_file, &runtime_lock_path, platform);
+    if layout.needs_bundle() {
+        validate_bundle_package_hashes(&packages);
+    }
+
+    let template_source = source_binary_plan(&root, template.as_deref(), target.as_deref());
+    let out_dir = resolve_out_dir(&root, &out_dir);
+    let paths = planned_artifact_paths(
+        &out_dir,
+        &command,
+        layout,
+        target_label.as_deref(),
+        target.as_deref(),
+    );
+    print_build_dry_run(
+        &root,
+        &derived,
+        layout,
+        &command,
+        platform,
+        target.as_deref(),
+        &template_source,
+        &out_dir,
+        &paths,
+        packages.len(),
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_artifact(
+    layout: Option<BundleLayout>,
+    command: Option<String>,
+    target_label: Option<String>,
+    platform_str: Option<String>,
+    target: Option<String>,
+    template: Option<PathBuf>,
+    docs_url: Option<String>,
+    scheme: Option<runtime_data::InstallScheme>,
+    install_name: Option<String>,
+    out_dir: PathBuf,
+    root_override: Option<PathBuf>,
+) -> BuildOutput {
+    if let Some(label) = target_label.as_deref() {
+        validate_target_label(label);
+    }
+    if let Some(target) = target.as_deref() {
+        validate_target_triple(target);
+    }
+    let root = project_root(root_override.as_deref());
+    let platform = parse_platform(platform_str);
+
+    let mut derived = derive_runtime_lock(&root);
+    let command = resolve_runtime_command(command, &derived.input.config);
+    let layout = resolve_bundle_layout(layout, &derived.input.config);
+    validate_command_name(&command);
     if let Some(docs_url) = docs_url {
         derived.runtime_config.docs_url = Some(docs_url);
     }
@@ -878,13 +989,7 @@ fn build_artifact(
         )
     });
 
-    let source_binary = match template {
-        Some(path) => resolve_runtime_template(&path),
-        None => {
-            run_cargo_build(&root, target.as_deref());
-            source_binary_path(&root, target.as_deref())
-        }
-    };
+    let source_binary = source_binary(&root, template.as_deref(), target.as_deref());
 
     stage_artifacts(
         &root,
@@ -902,8 +1007,8 @@ fn build_artifact(
 
 #[allow(clippy::too_many_arguments)]
 fn run_artifact(
-    layout: BundleLayout,
-    command: String,
+    layout: Option<BundleLayout>,
+    command: Option<String>,
     platform: Option<String>,
     out_dir: PathBuf,
     template: Option<PathBuf>,
@@ -914,11 +1019,14 @@ fn run_artifact(
     args: Vec<OsString>,
 ) {
     let root = project_root(root_override.as_deref());
+    let derived = derive_runtime_lock(&root);
+    let command = resolve_runtime_command(command, &derived.input.config);
+    let layout = resolve_bundle_layout(layout, &derived.input.config);
     let bundle_env_var = runtime_env_var(&command, "BUNDLE");
-    let bundle_dir = root.join(PRONTO_STATE_DIR).join("bundle");
+    let bundle_dir = root.join(SHIP_STATE_DIR).join("bundle");
     let output = build_artifact(
-        layout,
-        command,
+        Some(layout),
+        Some(command),
         None,
         platform,
         None,
@@ -944,6 +1052,18 @@ fn run_artifact(
     }
 }
 
+fn resolve_runtime_command(command: Option<String>, config: &ShipConfig) -> String {
+    command
+        .or_else(|| config.command.clone())
+        .unwrap_or_else(|| {
+            panic!("runtime command is required; pass --command or set [tool.conda-ship].command")
+        })
+}
+
+fn resolve_bundle_layout(layout: Option<BundleLayout>, config: &ShipConfig) -> BundleLayout {
+    layout.or(config.layout).unwrap_or(BundleLayout::Online)
+}
+
 fn inspect_artifact(platform_str: Option<String>, json: bool, root_override: Option<PathBuf>) {
     let root = project_root(root_override.as_deref());
     let derived = derive_runtime_lock(&root);
@@ -955,12 +1075,7 @@ fn inspect_artifact(platform_str: Option<String>, json: bool, root_override: Opt
     let package_infos = package_infos(&packages);
 
     if json {
-        let inspect = LockInspect {
-            lock: "derived runtime lock".to_string(),
-            selected_platform: platform.to_string(),
-            platforms: summaries,
-            packages: package_infos,
-        };
+        let inspect = inspect_report(&root, &derived, platform, summaries, package_infos);
         println!(
             "{}",
             serde_json::to_string_pretty(&inspect).expect("failed to render inspect JSON")
@@ -968,15 +1083,246 @@ fn inspect_artifact(platform_str: Option<String>, json: bool, root_override: Opt
         return;
     }
 
-    println!("derived runtime lock");
+    print_inspect_report(&root, &derived, platform, &summaries, &package_infos);
+}
+
+fn inspect_report(
+    root: &Path,
+    derived: &DerivedRuntimeLock,
+    platform: Platform,
+    summaries: Vec<PlatformSummary>,
+    package_infos: Vec<PackageInfo>,
+) -> InspectReport {
+    InspectReport {
+        project: InspectProject {
+            root: root.display().to_string(),
+            manifest: display_path(root, &derived.input.manifest_path),
+            manifest_kind: derived.input.manifest_kind.manifest_label().to_string(),
+            lockfile: display_path(root, &derived.input.lock_path),
+            source_environment: derived.source_environment.clone(),
+        },
+        runtime_input: InspectRuntimeInput {
+            channels: derived.runtime_config.channels.clone(),
+            packages: derived.runtime_config.packages.clone(),
+            package_count: derived.total_packages,
+            platform_count: derived.platforms.len(),
+        },
+        validation: InspectValidation {
+            source_lockfile: "ok".to_string(),
+            runtime_lock_derivation: "ok".to_string(),
+            required_packages: REQUIRED_RUNTIME_PACKAGES
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect(),
+        },
+        exclusions: InspectExclusions {
+            configured: derived.runtime_config.exclude.clone(),
+            removed: derived.removed_excludes.clone(),
+            removed_count: derived.total_excluded,
+        },
+        selected_platform: platform.to_string(),
+        selected_package_count: package_infos.len(),
+        platform_summary: summaries,
+        packages: package_infos,
+    }
+}
+
+fn print_inspect_report(
+    root: &Path,
+    derived: &DerivedRuntimeLock,
+    platform: Platform,
+    summaries: &[PlatformSummary],
+    package_infos: &[PackageInfo],
+) {
+    println!("Project");
+    print_project_summary(root, derived);
+    println!();
+    println!("Runtime input");
+    println!("  source environment: {}", derived.source_environment);
+    println!("  platforms: {}", platform_list(&derived.platforms));
+    println!(
+        "  channels: {}",
+        string_list(&derived.runtime_config.channels)
+    );
+    println!("  packages: {}", derived.total_packages);
+    println!();
+    println!("Validation");
+    println!("  source lockfile: ok");
+    println!("  runtime lock derivation: ok");
+    println!(
+        "  required packages: {}",
+        REQUIRED_RUNTIME_PACKAGES.join(", ")
+    );
+    println!();
+    println!("Exclusions");
+    println!(
+        "  configured: {}",
+        string_list(&derived.runtime_config.exclude)
+    );
+    println!("  removed: {}", string_list(&derived.removed_excludes));
+    println!("  removed package entries: {}", derived.total_excluded);
+    println!();
+    println!("Platforms");
     for summary in summaries {
         println!("  {}: {} packages", summary.platform, summary.packages);
     }
     println!();
-    println!("{platform}: {} packages", package_infos.len());
+    println!("Selected platform: {platform}");
+    println!("Packages: {}", package_infos.len());
     for package in package_infos {
         println!("  {} {} {}", package.name, package.version, package.build);
     }
+}
+
+fn print_bundle_dry_run(
+    root: &Path,
+    derived: &DerivedRuntimeLock,
+    platform: Platform,
+    bundle_path: &Path,
+) {
+    let runtime_lock_path = generated_runtime_lock_path(root);
+    let packages = packages_for_platform(&derived.lock_file, &runtime_lock_path, platform);
+    validate_bundle_package_hashes(&packages);
+
+    println!("Bundle dry run");
+    println!("Project");
+    print_project_summary(root, derived);
+    println!();
+    println!("Bundle");
+    println!("  platform: {platform}");
+    println!("  packages: {}", packages.len());
+    println!("  output: {}", display_path(root, bundle_path));
+    println!();
+    println!("No files written.");
+}
+
+#[allow(clippy::too_many_arguments)]
+fn print_build_dry_run(
+    root: &Path,
+    derived: &DerivedRuntimeLock,
+    layout: BundleLayout,
+    command: &str,
+    platform: Platform,
+    target: Option<&str>,
+    template_source: &RuntimeTemplateSource,
+    out_dir: &Path,
+    paths: &PlannedArtifactPaths,
+    selected_package_count: usize,
+) {
+    let install_scheme = derived.runtime_config.scheme.unwrap_or_default();
+    let install_name = derived
+        .runtime_config
+        .install_name
+        .as_deref()
+        .unwrap_or(command);
+    let docs_url = derived
+        .runtime_config
+        .docs_url
+        .clone()
+        .unwrap_or_else(default_docs_url);
+
+    println!("Build dry run");
+    println!("Project");
+    print_project_summary(root, derived);
+    println!();
+    println!("Runtime");
+    println!("  command: {command}");
+    println!("  layout: {}", layout.as_str());
+    println!("  platform: {platform}");
+    println!("  target: {}", target.unwrap_or("current"));
+    println!("  install scheme: {}", install_scheme_name(install_scheme));
+    println!("  install name: {install_name}");
+    println!("  docs URL: {docs_url}");
+    println!("  packages: {selected_package_count}");
+    println!();
+    println!("Template");
+    println!("  source: {}", template_source.label());
+    println!("  path: {}", display_path(root, template_source.path()));
+    println!();
+    println!("Artifacts");
+    println!("  output directory: {}", display_path(root, out_dir));
+    println!("  binary: {}", display_path(root, &paths.binary));
+    if let Some(bundle) = &paths.bundle {
+        println!("  bundle: {}", display_path(root, bundle));
+    }
+    println!("  info: {}", display_path(root, &paths.info));
+    println!("  runtime lock: {}", display_path(root, &paths.lock));
+    println!("  packages: {}", display_path(root, &paths.package_list));
+    println!("  checksums: {}", display_path(root, &paths.checksums));
+    println!();
+    println!("No files written.");
+}
+
+fn print_project_summary(root: &Path, derived: &DerivedRuntimeLock) {
+    println!("  root: {}", root.display());
+    println!(
+        "  manifest: {}",
+        display_path(root, &derived.input.manifest_path)
+    );
+    println!(
+        "  manifest kind: {}",
+        derived.input.manifest_kind.manifest_label()
+    );
+    println!(
+        "  source lockfile: {}",
+        display_path(root, &derived.input.lock_path)
+    );
+}
+
+fn validate_bundle_package_hashes(packages: &[&CondaPackageData]) {
+    let mut missing: Vec<_> = packages
+        .iter()
+        .filter_map(|pkg| {
+            let record = package_record(pkg);
+            record
+                .sha256
+                .is_none()
+                .then(|| record.name.as_normalized().to_string())
+        })
+        .collect();
+    missing.sort();
+    missing.dedup();
+    assert!(
+        missing.is_empty(),
+        "cannot bundle packages without SHA256 hashes in the source lockfile: {}",
+        missing.join(", ")
+    );
+}
+
+fn display_path(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .display()
+        .to_string()
+}
+
+fn string_list(values: &[String]) -> String {
+    if values.is_empty() {
+        "(none)".to_string()
+    } else {
+        values.join(", ")
+    }
+}
+
+fn platform_list(values: &[Platform]) -> String {
+    if values.is_empty() {
+        "(none)".to_string()
+    } else {
+        let mut platforms: Vec<_> = values.iter().map(ToString::to_string).collect();
+        platforms.sort();
+        platforms.join(", ")
+    }
+}
+
+fn install_scheme_name(scheme: runtime_data::InstallScheme) -> &'static str {
+    match scheme {
+        runtime_data::InstallScheme::Conda => "conda",
+        runtime_data::InstallScheme::Data => "data",
+    }
+}
+
+fn default_docs_url() -> String {
+    "https://jezdez.github.io/conda-ship/".to_string()
 }
 
 fn run_cargo_build(root: &Path, target: Option<&str>) {
@@ -985,7 +1331,7 @@ fn run_cargo_build(root: &Path, target: Option<&str>) {
         .arg("build")
         .arg("--release")
         .arg("--bin")
-        .arg("pronto-runtime")
+        .arg("conda-ship-runtime")
         .arg("--features")
         .arg("runtime-template")
         .current_dir(root);
@@ -1016,29 +1362,30 @@ fn stage_artifacts(
     std::fs::create_dir_all(&out_dir)
         .unwrap_or_else(|e| panic!("failed to create {}: {e}", out_dir.display()));
 
-    let stem = artifact_stem(name, layout, target_label);
-    let binary_name = binary_filename(&stem, target);
-    let binary = out_dir.join(binary_name);
-    std::fs::copy(source_binary, &binary).unwrap_or_else(|e| {
+    let paths = planned_artifact_paths(&out_dir, name, layout, target_label, target);
+    std::fs::copy(source_binary, &paths.binary).unwrap_or_else(|e| {
         panic!(
             "failed to copy {} to {}: {e}",
             source_binary.display(),
-            binary.display()
+            paths.binary.display()
         )
     });
-    stamp_runtime_data(&binary, layout, name, derived, generated_bundle);
+    stamp_runtime_data(&paths.binary, layout, name, derived, generated_bundle);
 
     let bundle = if layout == BundleLayout::External {
         let source_bundle = generated_bundle.expect("external builds require a generated bundle");
-        let staged_bundle = out_dir.join(format!("{stem}.bundle.tar.zst"));
-        std::fs::copy(source_bundle, &staged_bundle).unwrap_or_else(|e| {
+        let staged_bundle = paths
+            .bundle
+            .as_ref()
+            .expect("external builds have a planned bundle path");
+        std::fs::copy(source_bundle, staged_bundle).unwrap_or_else(|e| {
             panic!(
                 "failed to copy {} to {}: {e}",
                 source_bundle.display(),
                 staged_bundle.display()
             )
         });
-        Some(staged_bundle)
+        Some(staged_bundle.clone())
     } else {
         None
     };
@@ -1046,15 +1393,15 @@ fn stage_artifacts(
     let metadata = write_artifact_metadata(
         root,
         &out_dir,
-        &stem,
+        &paths.stem,
         layout,
         platform,
-        &binary,
+        &paths.binary,
         bundle.as_deref(),
         derived,
     );
 
-    eprintln!("staged {}", binary.display());
+    eprintln!("staged {}", paths.binary.display());
     if let Some(bundle) = &bundle {
         eprintln!("staged {}", bundle.display());
     }
@@ -1062,12 +1409,34 @@ fn stage_artifacts(
     eprintln!("wrote {}", metadata.checksums.display());
 
     BuildOutput {
-        binary,
+        binary: paths.binary,
         bundle,
         info: metadata.info,
         checksums: metadata.checksums,
         lock: metadata.lock,
         package_list: metadata.package_list,
+    }
+}
+
+fn planned_artifact_paths(
+    out_dir: &Path,
+    name: &str,
+    layout: BundleLayout,
+    target_label: Option<&str>,
+    target: Option<&str>,
+) -> PlannedArtifactPaths {
+    let stem = artifact_stem(name, layout, target_label);
+    let binary = out_dir.join(binary_filename(&stem, target));
+    let bundle =
+        (layout == BundleLayout::External).then(|| out_dir.join(format!("{stem}.bundle.tar.zst")));
+    PlannedArtifactPaths {
+        info: out_dir.join(format!("{stem}.info.json")),
+        checksums: out_dir.join(format!("{stem}.sha256")),
+        lock: out_dir.join(format!("{stem}.runtime.lock")),
+        package_list: out_dir.join(format!("{stem}.packages.txt")),
+        stem,
+        binary,
+        bundle,
     }
 }
 
@@ -1145,11 +1514,11 @@ fn write_artifact_metadata(
 }
 
 fn generated_runtime_lock_path(root: &Path) -> PathBuf {
-    root.join(PRONTO_STATE_DIR).join(RUNTIME_LOCK_FILE)
+    root.join(SHIP_STATE_DIR).join(RUNTIME_LOCK_FILE)
 }
 
 fn generated_bundle_path(root: &Path) -> PathBuf {
-    root.join(PRONTO_STATE_DIR).join(BUNDLE_ARCHIVE_FILE)
+    root.join(SHIP_STATE_DIR).join(BUNDLE_ARCHIVE_FILE)
 }
 
 fn validate_package_archive_name(name: &str) -> Result<(), &'static str> {
@@ -1260,11 +1629,116 @@ fn source_binary_path(root: &Path, target: Option<&str>) -> PathBuf {
     }
     path.push("release");
     path.push(if target_is_windows(target) {
-        "pronto-runtime.exe"
+        "conda-ship-runtime.exe"
     } else {
-        "pronto-runtime"
+        "conda-ship-runtime"
     });
     path
+}
+
+#[derive(Debug)]
+enum RuntimeTemplateSource {
+    Explicit(PathBuf),
+    Environment(PathBuf),
+    Installed(PathBuf),
+    SourceCheckout(PathBuf),
+}
+
+impl RuntimeTemplateSource {
+    fn path(&self) -> &Path {
+        match self {
+            Self::Explicit(path)
+            | Self::Environment(path)
+            | Self::Installed(path)
+            | Self::SourceCheckout(path) => path,
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Explicit(_) => "explicit --template",
+            Self::Environment(_) => "CONDA_SHIP_TEMPLATE",
+            Self::Installed(_) => "installed template",
+            Self::SourceCheckout(_) => "source checkout build",
+        }
+    }
+}
+
+fn source_binary_plan(
+    root: &Path,
+    template: Option<&Path>,
+    target: Option<&str>,
+) -> RuntimeTemplateSource {
+    if let Some(path) = template {
+        return RuntimeTemplateSource::Explicit(resolve_runtime_template(path));
+    }
+
+    if let Some(path) = runtime_template_from_env() {
+        return RuntimeTemplateSource::Environment(path);
+    }
+
+    if target.is_none()
+        && !is_ship_source_checkout(root)
+        && let Some(path) = find_installed_runtime_template()
+    {
+        return RuntimeTemplateSource::Installed(path);
+    }
+
+    assert!(
+        target.is_none() || is_ship_source_checkout(root),
+        "cross-builds from packaged conda-ship installs require --template"
+    );
+
+    RuntimeTemplateSource::SourceCheckout(source_binary_path(root, target))
+}
+
+fn source_binary(root: &Path, template: Option<&Path>, target: Option<&str>) -> PathBuf {
+    let plan = source_binary_plan(root, template, target);
+    if matches!(plan, RuntimeTemplateSource::SourceCheckout(_)) {
+        run_cargo_build(root, target);
+    }
+    plan.path().to_path_buf()
+}
+
+fn is_ship_source_checkout(root: &Path) -> bool {
+    let Ok(manifest) = std::fs::read_to_string(root.join("Cargo.toml")) else {
+        return false;
+    };
+
+    manifest.contains("name = \"conda-ship-runtime\"")
+        && root.join("src").join("main.rs").is_file()
+        && root.join("src").join("bin").join("cs.rs").is_file()
+}
+
+fn runtime_template_filename() -> &'static str {
+    if cfg!(windows) {
+        "cs-runtime-template.exe"
+    } else {
+        "cs-runtime-template"
+    }
+}
+
+fn runtime_template_from_env() -> Option<PathBuf> {
+    match env::var_os(RUNTIME_TEMPLATE_ENV) {
+        Some(value) if !value.is_empty() => Some(resolve_runtime_template(Path::new(&value))),
+        _ => None,
+    }
+}
+
+fn find_installed_runtime_template() -> Option<PathBuf> {
+    if let Ok(exe) = env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        let candidate = dir.join(runtime_template_filename());
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+
+    let path = env::var_os("PATH")?;
+    env::split_paths(&path)
+        .map(|dir| dir.join(runtime_template_filename()))
+        .find(|candidate| candidate.is_file())
 }
 
 fn resolve_runtime_template(path: &Path) -> PathBuf {
@@ -1313,7 +1787,7 @@ fn stamp_runtime_data(
             .runtime_config
             .docs_url
             .clone()
-            .unwrap_or_else(|| "https://jezdez.github.io/conda-pronto/".to_string()),
+            .unwrap_or_else(default_docs_url),
         install_method: None,
         runtime_config: runtime_data::RuntimeConfig {
             channels: derived.runtime_config.channels.clone(),
@@ -1472,102 +1946,16 @@ fn file_name(path: &Path) -> String {
         .to_string()
 }
 
-fn configure(
-    packages: Vec<String>,
-    channels: Vec<String>,
-    exclude: Vec<String>,
-    root_override: Option<PathBuf>,
-) {
-    let root = project_root(root_override.as_deref());
-    let manifest_path = discover_manifest_path(&root);
-    let kind = manifest_kind(&manifest_path);
-    let content = std::fs::read_to_string(&manifest_path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", manifest_path.display()));
-
-    let mut doc: toml_edit::DocumentMut = content
-        .parse()
-        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", manifest_path.display()));
-
-    if !packages.is_empty() {
-        let mut deps = toml_edit::Table::new();
-        for spec in &packages {
-            let (name, version) = pixi_dependency_from_matchspec(spec);
-            deps[&name] = toml_edit::value(version);
-        }
-        match kind {
-            ManifestKind::PixiPyproject => {
-                doc["tool"]["pixi"]["feature"]["runtime"]["dependencies"] =
-                    toml_edit::Item::Table(deps);
-            }
-            ManifestKind::CondaToml | ManifestKind::PixiToml => {
-                doc["feature"]["runtime"]["dependencies"] = toml_edit::Item::Table(deps);
-            }
-        }
-        eprintln!("configured {} custom packages", packages.len());
-    }
-
-    if !channels.is_empty() {
-        let mut arr = toml_edit::Array::new();
-        for c in &channels {
-            arr.push(c.to_string());
-        }
-        match kind {
-            ManifestKind::PixiPyproject => {
-                doc["tool"]["pixi"]["workspace"]["channels"] = toml_edit::value(arr);
-            }
-            ManifestKind::CondaToml | ManifestKind::PixiToml => {
-                doc["workspace"]["channels"] = toml_edit::value(arr);
-            }
-        }
-
-        eprintln!("configured channels: {}", channels.join(", "));
-    }
-
-    if !exclude.is_empty() {
-        let mut arr = toml_edit::Array::new();
-        for e in &exclude {
-            arr.push(e.to_string());
-        }
-        doc["tool"]["pronto"]["exclude"] = toml_edit::value(arr);
-        eprintln!("configured excludes: {}", exclude.join(", "));
-    }
-
-    std::fs::write(&manifest_path, doc.to_string())
-        .unwrap_or_else(|e| panic!("failed to write {}: {e}", manifest_path.display()));
-}
-
-fn pixi_dependency_from_matchspec(spec: &str) -> (String, String) {
-    let parsed = MatchSpec::from_str(spec, ParseMatchSpecOptions::default())
-        .unwrap_or_else(|e| panic!("failed to parse package matchspec {spec:?}: {e}"));
-    assert!(
-        parsed.build.is_none()
-            && parsed.build_number.is_none()
-            && parsed.file_name.is_none()
-            && parsed.extras.is_none()
-            && parsed.flags.is_none()
-            && parsed.channel.is_none()
-            && parsed.subdir.is_none()
-            && parsed.namespace.is_none()
-            && parsed.md5.is_none()
-            && parsed.sha256.is_none()
-            && parsed.url.is_none()
-            && parsed.license.is_none(),
-        "package matchspec {spec:?} cannot be represented in Pixi dependency syntax; use a project manifest and lockfile instead"
-    );
-    let version = parsed
-        .version
-        .map(|version| version.to_string())
-        .unwrap_or_else(|| "*".to_string());
-    (parsed.name.to_string(), version)
-}
-
 fn main() {
     tls::install_default_provider();
 
     let cli = Cli::parse();
     match cli.command {
-        Command::Lock { check, root } => write_runtime_lock(check, root),
-        Command::Bundle { platform, root } => gen_bundle(platform, root),
+        Command::Bundle {
+            platform,
+            dry_run,
+            root,
+        } => gen_bundle(platform, dry_run, root),
         Command::Build {
             layout,
             command,
@@ -1579,8 +1967,25 @@ fn main() {
             scheme,
             install_name,
             out_dir,
+            dry_run,
             root,
         } => {
+            if dry_run {
+                dry_run_build_artifact(
+                    layout,
+                    command,
+                    target_label,
+                    platform,
+                    target,
+                    template,
+                    docs_url,
+                    scheme,
+                    install_name,
+                    out_dir,
+                    root,
+                );
+                return;
+            }
             let output = build_artifact(
                 layout,
                 command,
@@ -1630,12 +2035,6 @@ fn main() {
             json,
             root,
         } => inspect_artifact(platform, json, root),
-        Command::Configure {
-            packages,
-            channels,
-            exclude,
-            root,
-        } => configure(packages, channels, exclude, root),
     }
 }
 
@@ -1669,14 +2068,14 @@ mod tests {
     }
 
     #[test]
-    fn test_find_project_root_finds_pixi_pyproject() {
+    fn test_find_project_root_finds_conda_pyproject() {
         let tmp = TempDir::new().unwrap();
         let nested = tmp.path().join("src").join("nested");
         std::fs::create_dir_all(&nested).unwrap();
         std::fs::write(
             tmp.path().join("pyproject.toml"),
             r#"
-[tool.pixi.workspace]
+[tool.conda.workspace]
 name = "demo"
 channels = ["conda-forge"]
 "#,
@@ -1709,7 +2108,9 @@ channels = ["conda-forge"]
 name = "demo"
 channels = ["conda-forge"]
 
-[tool.pronto]
+[tool.conda-ship]
+command = "demo"
+layout = "external"
 source-environment = "runtime"
 "#,
         )
@@ -1719,16 +2120,66 @@ source-environment = "runtime"
         let input = discover_project_input(tmp.path());
 
         assert_eq!(input.lock_path, tmp.path().join("pixi.lock"));
+        assert_eq!(input.config.command.as_deref(), Some("demo"));
+        assert_eq!(input.config.layout, Some(BundleLayout::External));
         assert_eq!(input.config.source_environment.as_deref(), Some("runtime"));
     }
 
     #[test]
-    fn test_pyproject_requires_pixi_config() {
+    fn test_discover_project_input_uses_conda_lock_for_conda_pyproject() {
         let tmp = TempDir::new().unwrap();
         std::fs::write(
             tmp.path().join("pyproject.toml"),
             r#"
-[tool.pronto]
+[tool.conda.workspace]
+name = "demo"
+channels = ["conda-forge"]
+
+[tool.conda-ship]
+command = "demo"
+layout = "embedded"
+source-environment = "runtime"
+"#,
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join("conda.lock"), "").unwrap();
+
+        let input = discover_project_input(tmp.path());
+
+        assert_eq!(input.lock_path, tmp.path().join("conda.lock"));
+        assert_eq!(input.config.command.as_deref(), Some("demo"));
+        assert_eq!(input.config.layout, Some(BundleLayout::Embedded));
+        assert_eq!(input.config.source_environment.as_deref(), Some("runtime"));
+    }
+
+    #[test]
+    fn test_conda_pyproject_wins_over_pixi_pyproject() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("pyproject.toml"),
+            r#"
+[tool.conda.workspace]
+name = "demo"
+
+[tool.pixi.workspace]
+name = "demo-pixi"
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            manifest_kind(&tmp.path().join("pyproject.toml")),
+            ManifestKind::CondaPyproject
+        );
+    }
+
+    #[test]
+    fn test_pyproject_requires_conda_or_pixi_config() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("pyproject.toml"),
+            r#"
+[tool.conda-ship]
 source-environment = "runtime"
 "#,
         )
@@ -1740,58 +2191,50 @@ source-environment = "runtime"
     }
 
     #[test]
-    fn test_configure_updates_pixi_pyproject_sections() {
+    fn test_find_installed_runtime_template_uses_env_override() {
         let tmp = TempDir::new().unwrap();
-        std::fs::write(
-            tmp.path().join("pyproject.toml"),
-            r#"
-[tool.pixi.workspace]
-name = "demo"
-channels = ["conda-forge"]
+        let template = tmp.path().join(runtime_template_filename());
+        std::fs::write(&template, b"runtime template").unwrap();
 
-[tool.pronto]
-source-environment = "runtime"
+        temp_env::with_var(RUNTIME_TEMPLATE_ENV, Some(template.as_os_str()), || {
+            assert_eq!(runtime_template_from_env(), Some(template.clone()));
+        });
+    }
+
+    #[test]
+    fn test_source_binary_prefers_explicit_template() {
+        let tmp = TempDir::new().unwrap();
+        let template = tmp.path().join("custom-template");
+        std::fs::write(&template, b"runtime template").unwrap();
+
+        assert_eq!(source_binary(tmp.path(), Some(&template), None), template);
+    }
+
+    #[test]
+    #[should_panic(expected = "cross-builds from packaged conda-ship installs require --template")]
+    fn test_source_binary_plan_requires_template_for_packaged_cross_builds() {
+        let tmp = TempDir::new().unwrap();
+
+        source_binary_plan(tmp.path(), None, Some("x86_64-unknown-linux-gnu"));
+    }
+
+    #[test]
+    fn test_is_ship_source_checkout_detects_runtime_target() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("src").join("bin")).unwrap();
+        std::fs::write(
+            tmp.path().join("Cargo.toml"),
+            r#"
+[[bin]]
+name = "conda-ship-runtime"
+path = "src/main.rs"
 "#,
         )
         .unwrap();
+        std::fs::write(tmp.path().join("src").join("main.rs"), "").unwrap();
+        std::fs::write(tmp.path().join("src").join("bin").join("cs.rs"), "").unwrap();
 
-        configure(
-            vec!["python >=3.12,<3.15".to_string()],
-            vec![
-                "conda-forge".to_string(),
-                "https://repo.example.test/conda".to_string(),
-            ],
-            vec!["conda-libmamba-solver".to_string()],
-            Some(tmp.path().to_path_buf()),
-        );
-
-        let content = std::fs::read_to_string(tmp.path().join("pyproject.toml")).unwrap();
-        let doc: toml::Value = toml::from_str(&content).unwrap();
-
-        assert_eq!(
-            doc["tool"]["pixi"]["feature"]["runtime"]["dependencies"]["python"]
-                .as_str()
-                .unwrap(),
-            ">=3.12,<3.15"
-        );
-        assert_eq!(
-            doc["tool"]["pixi"]["workspace"]["channels"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|value| value.as_str().unwrap())
-                .collect::<Vec<_>>(),
-            vec!["conda-forge", "https://repo.example.test/conda"]
-        );
-        assert_eq!(
-            doc["tool"]["pronto"]["exclude"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|value| value.as_str().unwrap())
-                .collect::<Vec<_>>(),
-            vec!["conda-libmamba-solver"]
-        );
+        assert!(is_ship_source_checkout(tmp.path()));
     }
 
     #[test]
@@ -1914,8 +2357,84 @@ source-environment = "runtime"
     }
 
     #[test]
+    fn test_stage_artifacts_external_outputs_bundle_and_metadata() {
+        let tmp = TempDir::new().unwrap();
+        let source_binary = tmp.path().join("runtime-template");
+        let source_bundle = tmp.path().join("bundle.tar.zst");
+        std::fs::write(&source_binary, b"runtime template").unwrap();
+        std::fs::write(&source_bundle, b"bundle archive").unwrap();
+
+        let platform = Platform::Linux64;
+        let platform_name = platform.to_string();
+        let platform_data = PlatformData {
+            name: rattler_lock::PlatformName::try_from(platform_name.clone()).unwrap(),
+            subdir: platform,
+            virtual_packages: Vec::new(),
+        };
+        let mut builder = LockFileBuilder::new()
+            .with_platforms(vec![platform_data])
+            .unwrap();
+        builder
+            .add_conda_package("default", platform_name.as_str(), make_pkg("conda", &[]))
+            .unwrap();
+        let lock_file = builder.finish();
+        let content = lock_file.render_to_string().unwrap();
+        let derived = DerivedRuntimeLock {
+            input: ProjectInput {
+                manifest_path: tmp.path().join("conda.toml"),
+                manifest_kind: ManifestKind::CondaToml,
+                lock_path: tmp.path().join("conda.lock"),
+                config: ShipConfig::default(),
+            },
+            lock_file,
+            content,
+            source_environment: "runtime".to_string(),
+            runtime_config: RuntimeStampConfig {
+                channels: vec!["conda-forge".to_string()],
+                packages: vec!["conda".to_string()],
+                ..RuntimeStampConfig::default()
+            },
+            platforms: vec![platform],
+            total_packages: 1,
+            total_excluded: 0,
+            removed_excludes: Vec::new(),
+        };
+
+        let output = stage_artifacts(
+            tmp.path(),
+            &source_binary,
+            BundleLayout::External,
+            "demo",
+            Some("linux-64"),
+            platform,
+            None,
+            Path::new("dist"),
+            &derived,
+            Some(&source_bundle),
+        );
+
+        assert!(output.binary.is_file());
+        let bundle = output
+            .bundle
+            .expect("external layout should stage a bundle");
+        assert_eq!(
+            bundle.file_name().and_then(|name| name.to_str()),
+            Some("demo-linux-64.bundle.tar.zst")
+        );
+        assert!(bundle.is_file());
+
+        let info: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&output.info).unwrap()).unwrap();
+        assert_eq!(info["layout"], "external");
+        assert_eq!(info["bundle"], "demo-linux-64.bundle.tar.zst");
+
+        let checksums = std::fs::read_to_string(&output.checksums).unwrap();
+        assert!(checksums.contains("demo-linux-64.bundle.tar.zst"));
+    }
+
+    #[test]
     fn test_command_name_allows_filename_safe_components() {
-        validate_command_name("conda-pronto_1.0");
+        validate_command_name("conda-ship_1.0");
     }
 
     #[test]
@@ -1970,7 +2489,7 @@ source-environment = "runtime"
     #[test]
     fn test_build_accepts_scheme_with_install_name() {
         let cli = Cli::try_parse_from([
-            "pronto",
+            "cs",
             "build",
             "--command",
             "cx",
@@ -1991,21 +2510,91 @@ source-environment = "runtime"
             panic!("expected build command");
         };
 
-        assert_eq!(command, "cx");
+        assert_eq!(command.as_deref(), Some("cx"));
         assert_eq!(scheme, Some(runtime_data::InstallScheme::Data));
         assert_eq!(install_name.as_deref(), Some("express"));
     }
 
     #[test]
+    fn test_build_accepts_manifest_command_without_cli_command() {
+        let cli = Cli::try_parse_from(["cs", "build"]).unwrap();
+
+        let Command::Build {
+            command, layout, ..
+        } = cli.command
+        else {
+            panic!("expected build command");
+        };
+
+        assert_eq!(command, None);
+        assert_eq!(layout, None);
+    }
+
+    #[test]
+    fn test_resolve_runtime_command_uses_manifest_config() {
+        let config = ShipConfig {
+            command: Some("demo".to_string()),
+            ..ShipConfig::default()
+        };
+
+        assert_eq!(resolve_runtime_command(None, &config), "demo");
+        assert_eq!(
+            resolve_runtime_command(Some("override".to_string()), &config),
+            "override"
+        );
+    }
+
+    #[test]
+    fn test_resolve_bundle_layout_uses_manifest_config() {
+        let config = ShipConfig {
+            layout: Some(BundleLayout::Embedded),
+            ..ShipConfig::default()
+        };
+
+        assert_eq!(resolve_bundle_layout(None, &config), BundleLayout::Embedded);
+        assert_eq!(
+            resolve_bundle_layout(Some(BundleLayout::External), &config),
+            BundleLayout::External
+        );
+        assert_eq!(
+            resolve_bundle_layout(None, &ShipConfig::default()),
+            BundleLayout::Online
+        );
+    }
+
+    #[test]
+    fn test_build_accepts_dry_run() {
+        let cli = Cli::try_parse_from(["cs", "build", "--command", "demo", "--dry-run"]).unwrap();
+
+        let Command::Build { dry_run, .. } = cli.command else {
+            panic!("expected build command");
+        };
+
+        assert!(dry_run);
+    }
+
+    #[test]
+    fn test_bundle_accepts_dry_run() {
+        let cli = Cli::try_parse_from(["cs", "bundle", "--dry-run"]).unwrap();
+
+        let Command::Bundle { dry_run, .. } = cli.command else {
+            panic!("expected bundle command");
+        };
+
+        assert!(dry_run);
+    }
+
+    #[test]
+    fn test_lock_subcommand_is_not_accepted() {
+        let result = Cli::try_parse_from(["cs", "lock"]);
+
+        assert!(result.is_err(), "cs lock should not be a public command");
+    }
+
+    #[test]
     fn test_build_rejects_path_option() {
-        let result = Cli::try_parse_from([
-            "pronto",
-            "build",
-            "--command",
-            "demo",
-            "--path",
-            "/tmp/demo",
-        ]);
+        let result =
+            Cli::try_parse_from(["cs", "build", "--command", "demo", "--path", "/tmp/demo"]);
 
         assert!(result.is_err(), "build-time --path should not be accepted");
     }
@@ -2013,7 +2602,7 @@ source-environment = "runtime"
     #[test]
     fn test_run_rejects_path_option_before_runtime_args() {
         let result = Cli::try_parse_from([
-            "pronto",
+            "cs",
             "run",
             "--command",
             "demo",
@@ -2079,22 +2668,6 @@ source-environment = "runtime"
     #[test]
     fn test_runtime_env_var_sanitizes_artifact_name() {
         assert_eq!(runtime_env_var("demo-tool", "BUNDLE"), "DEMO_TOOL_BUNDLE");
-    }
-
-    #[test]
-    fn test_pixi_dependency_from_matchspec_preserves_comma_version() {
-        assert_eq!(
-            pixi_dependency_from_matchspec("python >=3.12,<3.15"),
-            ("python".to_string(), ">=3.12,<3.15".to_string())
-        );
-    }
-
-    #[test]
-    fn test_pixi_dependency_from_matchspec_defaults_to_wildcard() {
-        assert_eq!(
-            pixi_dependency_from_matchspec("conda-spawn"),
-            ("conda-spawn".to_string(), "*".to_string())
-        );
     }
 
     #[test]

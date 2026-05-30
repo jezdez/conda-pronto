@@ -1,8 +1,8 @@
 # Runtime CLI Reference
 
-Every conda-pronto artifact includes a generated runtime. In this page,
-`COMMAND` stands for the command name passed to `pronto build --command
-COMMAND`.
+Every conda-ship artifact includes a generated runtime. In this page,
+`COMMAND` stands for the command name resolved by `cs build` from
+`[tool.conda-ship].command` or `--command`.
 
 For conda-express, `COMMAND` is `cx`. For an embedded conda-express artifact,
 the staged runtime is `cxz`.
@@ -46,19 +46,6 @@ Options:
   `data`, which installs below the platform user data directory. This is
   mutually exclusive with the global `--path` option.
 
-`-c, --channel CH`
-: Add a channel for a live solve. Can be passed multiple times. Use with
-  `--no-lock`; locked bootstraps use the channels recorded in the runtime lock.
-
-`-p, --package SPEC`
-: Add a package spec for a live solve. Can be passed multiple times. Use with
-  `--no-lock`; locked bootstraps install the package set recorded in the
-  runtime lock.
-
-`--no-lock`
-: Ignore the stamped runtime lock and perform a live solve. Requires network
-  access.
-
 `--lockfile PATH`
 : Use an external rattler-lock file instead of the stamped runtime lock.
 
@@ -82,14 +69,11 @@ COMMAND bootstrap --force
 # Bootstrap into a custom install path
 COMMAND --path /opt/name bootstrap
 
-# Live solve with extra packages
-COMMAND bootstrap --no-lock --package conda-build --package rattler-build
-
 # Bootstrap from an external bundle directory
 COMMAND bootstrap --bundle ./packages --offline
 ```
 
-For an embedded runtime, conda-pronto detects the built-in bundle
+For an embedded runtime, conda-ship detects the built-in bundle
 automatically:
 
 ```bash

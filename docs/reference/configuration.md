@@ -1,28 +1,29 @@
 # Configuration Reference
 
-conda-pronto reads project intent from a conda-compatible manifest and concrete
+conda-ship reads project intent from a conda-compatible manifest and concrete
 package records from the matching lockfile.
 
-The preferred manifest is `conda.toml` with `conda.lock`. `pixi.toml` with
-`pixi.lock` and Pixi's `pyproject.toml` with `pixi.lock` remain supported for
+The preferred manifest is `conda.toml` with `conda.lock`. `pyproject.toml` with
+`[tool.conda]` also uses `conda.lock`. `pixi.toml` with `pixi.lock` and
+`pyproject.toml` with `[tool.pixi]` plus `pixi.lock` remain supported for
 Pixi-compatible workflows.
 
 Downstream distributions maintain these values in their own project manifest.
-conda-pronto treats the values as build input; it does not define a universal
+conda-ship treats the values as build input; it does not define a universal
 conda distribution.
 
-`pronto lock`, `pronto inspect`, `pronto build`, and `pronto run` can read either
-manifest/lockfile pair. Installed builds pass `--template` so conda-pronto can
-stamp a prebuilt generic runtime template without needing the conda-pronto
-source checkout.
+`cs inspect`, `cs bundle`, `cs build`, and `cs run` can read
+either manifest/lockfile pair. Packaged builds find the installed runtime
+template automatically, so local projects do not need a conda-ship source
+checkout.
 
 ## Manifest Discovery
 
-conda-pronto looks in the build root for:
+conda-ship looks in the build root for:
 
 1. `conda.toml`
 2. `pixi.toml`
-3. `pyproject.toml` when it contains `[tool.pixi]`
+3. `pyproject.toml` when it contains `[tool.conda]` or `[tool.pixi]`
 
 The selected manifest determines the lockfile:
 
@@ -30,11 +31,16 @@ The selected manifest determines the lockfile:
 | --- | --- |
 | `conda.toml` | `conda.lock` |
 | `pixi.toml` | `pixi.lock` |
-| `pyproject.toml` with Pixi config | `pixi.lock` |
+| `pyproject.toml` with `[tool.conda]` | `conda.lock` |
+| `pyproject.toml` with `[tool.pixi]` | `pixi.lock` |
+
+When `pyproject.toml` contains both `[tool.conda]` and `[tool.pixi]`,
+conda-ship follows conda-workspaces and treats `[tool.conda]` as the selected
+manifest.
 
 `conda.lock` and `pixi.lock` are source lockfiles owned by their respective
-workspace tools. `target/pronto/runtime.lock` is generated build output owned
-by conda-pronto.
+workspace tools. conda-ship derives a runtime lock from that source lockfile
+while inspecting, building, bundling, or smoke-testing a runtime.
 
 ## Source Environment
 
@@ -53,7 +59,8 @@ conda-spawn = ">=0.1.0"
 runtime = { features = ["runtime"], no-default-feature = true }
 ```
 
-In Pixi's `pyproject.toml` layout, the same Pixi sections live below
+In `pyproject.toml`, conda-workspaces sections live below `[tool.conda]`, for
+example `[tool.conda.feature.runtime.dependencies]`. Pixi sections live below
 `[tool.pixi]`, for example `[tool.pixi.feature.runtime.dependencies]`.
 
 The selected environment must include `conda`, `conda-rattler-solver`, and
@@ -61,12 +68,14 @@ The selected environment must include `conda`, `conda-rattler-solver`, and
 `solver: rattler` into the installed `.condarc`, and implement `COMMAND shell`
 through conda-spawn.
 
-## `[tool.pronto]`
+## `[tool.conda-ship]`
 
-`[tool.pronto]` records conda-pronto-specific build policy:
+`[tool.conda-ship]` records conda-ship-specific build policy:
 
 ```toml
-[tool.pronto]
+[tool.conda-ship]
+command = "demo"
+layout = "online"
 source-environment = "runtime"
 exclude = ["conda-libmamba-solver"]
 docs-url = "https://example.com/demo/"
@@ -74,9 +83,17 @@ scheme = "conda"
 install-name = "demo"
 ```
 
+`command`
+: Command name for the generated runtime. `cs build` and `cs run` require this
+  value, either here or through `--command`. It is not a conda environment name.
+
+`layout`
+: Artifact layout to build. Supported values are `online`, `external`, and
+  `embedded`. When omitted, `cs build` defaults to `online`.
+
 `source-environment`
 : Name of the solved environment to turn into the runtime lock. When omitted,
-  conda-pronto first tries `runtime`, then falls back to the default environment.
+  conda-ship first tries `runtime`, then falls back to the default environment.
 
 `exclude`
 : Package names removed from the derived runtime lock, including dependencies
@@ -93,21 +110,22 @@ install-name = "demo"
   `scheme` is not configured.
 
 `install-name`
-: Name used inside the install scheme. When omitted, conda-pronto uses the
-  generated runtime command name. For example, `command = cx` can use
+: Name used inside the install scheme. When omitted, conda-ship uses the
+  generated runtime command name. For example, `command = "cx"` can use
   `install-name = "express"` so the `conda` scheme resolves to
   `~/.conda/express`.
-  Choose a product-specific install name. conda-pronto does not reserve names
+  Choose a product-specific install name. conda-ship does not reserve names
   under `~/.conda`; it relies on runtime metadata to avoid overwriting prefixes
   owned by other tools.
 
 Package and channel intent belongs in the selected source environment, not in
-`[tool.pronto]`. conda-pronto records the resolved package names and channel
+`[tool.conda-ship]`. conda-ship records the resolved package names and channel
 URLs from the source lockfile environment into generated runtime metadata.
 
 ## Stamped Runtime Metadata
 
-`pronto build --command COMMAND` stamps these values onto the runtime:
+`cs build` stamps these values onto the runtime after resolving `command` and
+`layout` from CLI flags or `[tool.conda-ship]`:
 
 - command name: `COMMAND` for `online` and `external`, `COMMAND` plus `z` for
   `embedded`
@@ -122,10 +140,9 @@ Non-alphanumeric characters in environment variable names become underscores.
 
 ## Downstream Defaults
 
-conda-pronto's repository default package set exists so the builder and
+conda-ship's repository default package set exists so the builder and
 runtime behavior can be tested. A downstream distribution makes its own
-package choices and passes them through `pronto configure` or direct manifest
-edits before committing the matching lockfile.
+package choices in its project manifest before committing the matching lockfile.
 
 For example, conda-express owns the package set used when building `cx` and
-`cxz`; those package choices are conda-express policy, not conda-pronto policy.
+`cxz`; those package choices are conda-express policy, not conda-ship policy.

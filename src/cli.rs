@@ -106,18 +106,6 @@ pub enum Command {
         #[clap(long, value_enum)]
         scheme: Option<InstallScheme>,
 
-        /// Channels to use for a live solve (default: stamped runtime channels)
-        #[clap(short, long)]
-        channel: Option<Vec<String>>,
-
-        /// Additional package specs to install during a live solve
-        #[clap(short, long)]
-        package: Option<Vec<String>>,
-
-        /// Ignore the embedded lockfile and perform a live solve instead
-        #[clap(long)]
-        no_lock: bool,
-
         /// Use an external lockfile instead of the embedded one
         #[clap(long)]
         lockfile: Option<PathBuf>,
@@ -170,7 +158,6 @@ pub enum Command {
 pub enum LockSource {
     Embedded,
     File(PathBuf),
-    None,
 }
 
 #[cfg(test)]
@@ -181,16 +168,13 @@ mod tests {
 
     #[test]
     fn test_parse_bootstrap_defaults() {
-        let cli = Cli::parse_from(["pronto-runtime", "bootstrap"]);
+        let cli = Cli::parse_from(["conda-ship-runtime", "bootstrap"]);
         assert!(cli.path.is_none());
         assert_matches!(
             cli.command,
             Some(Command::Bootstrap {
                 force: false,
                 scheme: None,
-                channel: None,
-                package: None,
-                no_lock: false,
                 lockfile: None,
                 bundle: None,
                 offline: false,
@@ -200,14 +184,14 @@ mod tests {
 
     #[test]
     fn test_parse_global_path_for_bootstrap() {
-        let cli = Cli::parse_from(["pronto-runtime", "--path", "/tmp/test", "bootstrap"]);
+        let cli = Cli::parse_from(["conda-ship-runtime", "--path", "/tmp/test", "bootstrap"]);
         assert_eq!(cli.path.as_deref(), Some(std::path::Path::new("/tmp/test")));
         assert_matches!(cli.command, Some(Command::Bootstrap { force: false, .. }));
     }
 
     #[test]
     fn test_parse_bootstrap_scheme() {
-        let cli = Cli::parse_from(["pronto-runtime", "bootstrap", "--scheme", "data"]);
+        let cli = Cli::parse_from(["conda-ship-runtime", "bootstrap", "--scheme", "data"]);
         assert_matches!(
             cli.command,
             Some(Command::Bootstrap {
@@ -218,79 +202,44 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_bootstrap_channels_packages() {
-        let cli = Cli::parse_from(["pronto-runtime", "bootstrap", "-c", "main", "-p", "numpy"]);
-        assert_matches!(
-            cli.command,
-            Some(Command::Bootstrap { channel: Some(ref c), package: Some(ref p), .. })
-                if c == &vec!["main".to_string()] && p == &vec!["numpy".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_parse_bootstrap_multiple_channels_packages() {
+    fn test_parse_bootstrap_lockfile() {
         let cli = Cli::parse_from([
-            "pronto-runtime",
+            "conda-ship-runtime",
             "bootstrap",
-            "-c",
-            "conda-forge",
-            "-c",
-            "defaults",
-            "-p",
-            "numpy",
-            "-p",
-            "scipy",
+            "--lockfile",
+            "/tmp/my.lock",
         ]);
         assert_matches!(
             cli.command,
-            Some(Command::Bootstrap { channel: Some(ref c), package: Some(ref p), .. })
-                if c == &vec!["conda-forge".to_string(), "defaults".to_string()]
-                    && p == &vec!["numpy".to_string(), "scipy".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_parse_bootstrap_no_lock() {
-        let cli = Cli::parse_from(["pronto-runtime", "bootstrap", "--no-lock"]);
-        assert_matches!(
-            cli.command,
-            Some(Command::Bootstrap {
-                no_lock: true,
-                lockfile: None,
-                ..
-            })
-        );
-    }
-
-    #[test]
-    fn test_parse_bootstrap_lockfile() {
-        let cli = Cli::parse_from(["pronto-runtime", "bootstrap", "--lockfile", "/tmp/my.lock"]);
-        assert_matches!(
-            cli.command,
-            Some(Command::Bootstrap { no_lock: false, lockfile: Some(ref p), .. })
+            Some(Command::Bootstrap { lockfile: Some(ref p), .. })
                 if p == std::path::Path::new("/tmp/my.lock")
         );
     }
 
     #[test]
     fn test_parse_status() {
-        let cli = Cli::parse_from(["pronto-runtime", "status"]);
+        let cli = Cli::parse_from(["conda-ship-runtime", "status"]);
         assert_matches!(cli.command, Some(Command::Status { scheme: None }));
     }
 
     #[test]
     fn test_parse_status_with_global_path() {
-        let cli = Cli::parse_from(["pronto-runtime", "--path", "/opt/pronto-runtime", "status"]);
+        let cli = Cli::parse_from([
+            "conda-ship-runtime",
+            "--path",
+            "/opt/conda-ship-runtime",
+            "status",
+        ]);
         assert_eq!(
             cli.path.as_deref(),
-            Some(std::path::Path::new("/opt/pronto-runtime"))
+            Some(std::path::Path::new("/opt/conda-ship-runtime"))
         );
         assert_matches!(cli.command, Some(Command::Status { .. }));
     }
 
     #[test]
     fn test_parse_shell_with_env() {
-        let cli = Cli::parse_from(["pronto-runtime", "shell", "myenv"]);
+        let cli = Cli::parse_from(["conda-ship-runtime", "shell", "myenv"]);
         assert_matches!(
             cli.command,
             Some(Command::Shell { env: Some(ref e), ref args }) if e == "myenv" && args.is_empty()
@@ -299,7 +248,7 @@ mod tests {
 
     #[test]
     fn test_parse_shell_no_env() {
-        let cli = Cli::parse_from(["pronto-runtime", "shell"]);
+        let cli = Cli::parse_from(["conda-ship-runtime", "shell"]);
         assert_matches!(
             cli.command,
             Some(Command::Shell {
@@ -311,7 +260,7 @@ mod tests {
 
     #[test]
     fn test_parse_shell_extra_args() {
-        let cli = Cli::parse_from(["pronto-runtime", "shell", "myenv", "--", "python", "-q"]);
+        let cli = Cli::parse_from(["conda-ship-runtime", "shell", "myenv", "--", "python", "-q"]);
         assert_matches!(
             cli.command,
             Some(Command::Shell {
@@ -324,7 +273,7 @@ mod tests {
 
     #[test]
     fn test_parse_uninstall_yes() {
-        let cli = Cli::parse_from(["pronto-runtime", "uninstall", "--yes"]);
+        let cli = Cli::parse_from(["conda-ship-runtime", "uninstall", "--yes"]);
         assert_matches!(
             cli.command,
             Some(Command::Uninstall {
@@ -337,15 +286,15 @@ mod tests {
     #[test]
     fn test_parse_uninstall_with_global_path() {
         let cli = Cli::parse_from([
-            "pronto-runtime",
+            "conda-ship-runtime",
             "--path",
-            "/opt/pronto-runtime",
+            "/opt/conda-ship-runtime",
             "uninstall",
             "-y",
         ]);
         assert_eq!(
             cli.path.as_deref(),
-            Some(std::path::Path::new("/opt/pronto-runtime"))
+            Some(std::path::Path::new("/opt/conda-ship-runtime"))
         );
         assert_matches!(cli.command, Some(Command::Uninstall { yes: true, .. }));
     }
@@ -353,15 +302,15 @@ mod tests {
     #[test]
     fn test_parse_global_path_for_passthrough() {
         let cli = Cli::parse_from([
-            "pronto-runtime",
+            "conda-ship-runtime",
             "--path",
-            "/opt/pronto-runtime",
+            "/opt/conda-ship-runtime",
             "install",
             "numpy",
         ]);
         assert_eq!(
             cli.path.as_deref(),
-            Some(std::path::Path::new("/opt/pronto-runtime"))
+            Some(std::path::Path::new("/opt/conda-ship-runtime"))
         );
         assert_matches!(
             cli.command,
@@ -372,7 +321,7 @@ mod tests {
 
     #[test]
     fn test_parse_no_args() {
-        let cli = Cli::parse_from(["pronto-runtime"]);
+        let cli = Cli::parse_from(["conda-ship-runtime"]);
         assert!(
             cli.command.is_none(),
             "bare `runtime` should have no command"
@@ -381,45 +330,46 @@ mod tests {
 
     #[test]
     fn test_parse_verbose_flag() {
-        let cli = Cli::parse_from(["pronto-runtime", "--verbose", "bootstrap"]);
+        let cli = Cli::parse_from(["conda-ship-runtime", "--verbose", "bootstrap"]);
         assert_eq!(cli.verbosity(), Verbosity::Verbose);
     }
 
     #[test]
     fn test_parse_quiet_flag() {
-        let cli = Cli::parse_from(["pronto-runtime", "--quiet", "bootstrap"]);
+        let cli = Cli::parse_from(["conda-ship-runtime", "--quiet", "bootstrap"]);
         assert_eq!(cli.verbosity(), Verbosity::Quiet);
     }
 
     #[test]
     fn test_parse_short_verbose_flag() {
-        let cli = Cli::parse_from(["pronto-runtime", "-v", "status"]);
+        let cli = Cli::parse_from(["conda-ship-runtime", "-v", "status"]);
         assert_eq!(cli.verbosity(), Verbosity::Verbose);
     }
 
     #[test]
     fn test_parse_short_quiet_flag() {
-        let cli = Cli::parse_from(["pronto-runtime", "-q", "status"]);
+        let cli = Cli::parse_from(["conda-ship-runtime", "-q", "status"]);
         assert_eq!(cli.verbosity(), Verbosity::Quiet);
     }
 
     #[test]
     fn test_parse_no_verbosity_flags() {
-        let cli = Cli::parse_from(["pronto-runtime", "bootstrap"]);
+        let cli = Cli::parse_from(["conda-ship-runtime", "bootstrap"]);
         assert_eq!(cli.verbosity(), Verbosity::Normal);
     }
 
     #[test]
     fn test_verbose_quiet_conflict() {
-        let result = Cli::try_parse_from(["pronto-runtime", "--verbose", "--quiet", "bootstrap"]);
+        let result =
+            Cli::try_parse_from(["conda-ship-runtime", "--verbose", "--quiet", "bootstrap"]);
         assert!(result.is_err(), "--verbose and --quiet should conflict");
     }
 
     #[rstest]
-    #[case::bundle_only(&["pronto-runtime", "bootstrap", "--bundle", "/tmp/pkgs"], Some("/tmp/pkgs"), false)]
-    #[case::offline_only(&["pronto-runtime", "bootstrap", "--offline"], None, true)]
-    #[case::both(&["pronto-runtime", "bootstrap", "--bundle", "/p", "--offline"], Some("/p"), true)]
-    #[case::defaults(&["pronto-runtime", "bootstrap"], None, false)]
+    #[case::bundle_only(&["conda-ship-runtime", "bootstrap", "--bundle", "/tmp/pkgs"], Some("/tmp/pkgs"), false)]
+    #[case::offline_only(&["conda-ship-runtime", "bootstrap", "--offline"], None, true)]
+    #[case::both(&["conda-ship-runtime", "bootstrap", "--bundle", "/p", "--offline"], Some("/p"), true)]
+    #[case::defaults(&["conda-ship-runtime", "bootstrap"], None, false)]
     fn test_parse_bootstrap_offline_flags(
         #[case] args: &[&str],
         #[case] expected_bundle: Option<&str>,

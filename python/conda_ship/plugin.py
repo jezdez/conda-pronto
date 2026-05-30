@@ -1,4 +1,4 @@
-"""Conda plugin hooks for conda-pronto.
+"""Conda plugin hooks for conda-ship.
 
 This module is imported on every conda invocation through the conda plugin
 entry point. Keep imports light and defer the adapter implementation until the
@@ -24,7 +24,7 @@ def conda_subcommands() -> Iterable[CondaSubcommand]:
     from .cli import configure_parser, execute
 
     yield CondaSubcommand(
-        name="pronto",
+        name="ship",
         summary="Build ready-to-run conda runtimes.",
         action=execute,
         configure_parser=configure_parser,

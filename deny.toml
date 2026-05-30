@@ -1,4 +1,4 @@
-# cargo-deny configuration for conda-pronto
+# cargo-deny configuration for conda-ship
 # https://embarkstudios.github.io/cargo-deny/
 #
 # Run: cargo deny check

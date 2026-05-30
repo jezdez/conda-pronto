@@ -1,89 +1,87 @@
 # Build Locally
 
 Use local builds while iterating on runtime package sets, channel choices, or
-conda-pronto runtime behavior.
+conda-ship runtime behavior.
 
-Installed local builds use a prebuilt runtime template:
+Packaged local builds find the installed runtime template automatically. When
+your manifest contains `[tool.conda-ship].command`, a normal build is:
 
 ```bash
-pronto build \
-  --layout online \
-  --command demo \
-  --template ./pronto-runtime-template
+cs build
 ```
 
-When developing conda-pronto itself from a source checkout, you can omit
-`--template`. In that mode `pronto build` builds the generic
-`pronto-runtime` target from the checkout before stamping it.
+When developing conda-ship itself from a source checkout, you can omit
+`--template`. In that mode `cs build` builds the generic
+`conda-ship-runtime` target from the checkout before stamping it.
 
 If you are changing a downstream distribution such as conda-express, keep the
 package-set decision in that downstream project, then reproduce the build with
-the `pronto` CLI or the GitHub Action.
+the `cs` CLI or the GitHub Action.
 
-## Refresh The Artifact Lock
+## Check The Runtime Input
 
-Run this after changing `conda.lock`, `pixi.lock`, or `[tool.pronto]`:
+When you want to check the selected source environment before building, run:
 
 ```bash
-pronto lock
+cs inspect
 ```
 
-If you changed the `runtime` environment in `conda.toml`, use
+If you changed the `runtime` environment in `conda.toml` or `pyproject.toml`
+with `[tool.conda]`, use
 {external+conda-workspaces:doc}`conda workspace lock <reference/cli>` to refresh
-the source lockfile before deriving conda-pronto's runtime lock:
+the source lockfile before building:
 
 ```bash
 conda workspace lock
-pronto lock
+cs inspect
 ```
 
-For Pixi-compatible builds, including Pixi config in `pyproject.toml`, use
+For Pixi-compatible builds, including `pyproject.toml` with `[tool.pixi]`, use
 Pixi to refresh the source lockfile:
 
 ```bash
 pixi lock
-pronto lock
+cs inspect
 ```
 
-CI checks the generated runtime lock with:
+CI can use JSON output for machine-readable preflight checks:
 
 ```bash
-pronto lock --check
+cs inspect --json
+```
+
+Use `build --dry-run` when you want to validate artifact names, template
+selection, install settings, and bundle suitability without writing files:
+
+```bash
+cs build --dry-run
 ```
 
 ## Build A Runtime
 
-`--command` is required. conda-pronto does not provide a default runtime
-command name.
+`[tool.conda-ship].command` is required unless you pass `--command`.
+conda-ship does not provide a default runtime command name.
 
 ```bash
-pronto build \
-  --layout online \
-  --command demo \
-  --template ./pronto-runtime-template
+cs build
 ```
 
 Use `--out-dir` to stage somewhere other than `dist/`:
 
 ```bash
-pronto build \
-  --layout online \
-  --command demo \
-  --template ./pronto-runtime-template \
-  --out-dir /tmp/pronto-artifacts
+cs build \
+  --out-dir /tmp/cs-artifacts
 ```
 
-Pass `--template` when using an installed `pronto` binary outside a
-conda-pronto source checkout.
+Pass `--template` when you need an explicit release template asset, custom
+packaging path, or cross-build template.
 
 ## Run A Smoke Test
 
-Use `pronto run` to build and immediately execute the staged runtime:
+Use `cs run` to build and immediately execute the staged runtime:
 
 ```bash
-pronto run \
-  --command demo \
-  --template ./pronto-runtime-template \
+cs run \
   -- --path /tmp/demo-smoke bootstrap
 ```
 
@@ -94,11 +92,11 @@ Everything after `--` is passed to the generated runtime.
 Pass both the Rust target triple and an artifact label:
 
 ```bash
-pronto build \
+cs build \
   --command demo \
   --target x86_64-unknown-linux-gnu \
   --target-label x86_64-unknown-linux-gnu \
-  --template ./pronto-runtime-template-x86_64-unknown-linux-gnu
+  --template ./cs-runtime-template-x86_64-unknown-linux-gnu
 ```
 
 The target label is appended to staged artifact names and metadata files.
@@ -108,11 +106,11 @@ The target label is appended to staged artifact names and metadata files.
 Use a command owned by the distribution you are building. For example,
 conda-express uses `cx` as its command name. The online layout stages `cx`; the
 embedded layout stages `cxz`. A different distribution uses a different
-`--command`.
+`[tool.conda-ship].command` value or the `--command` override.
 
 ## Run Release Checks
 
-Before publishing a conda-pronto release, run the same local checks used for
+Before publishing a conda-ship release, run the same local checks used for
 the release pass:
 
 ```bash

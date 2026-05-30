@@ -3,9 +3,9 @@ requires = ["hatchling>=1.26"]
 build-backend = "hatchling.build"
 
 [project]
-name = "conda-pronto"
+name = "conda-ship"
 version = "0.1.0"
-description = "Conda plugin entry point for the conda-pronto runtime builder."
+description = "Conda plugin entry point for the conda-ship runtime builder."
 requires-python = ">=3.10"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -24,13 +24,13 @@ classifiers = [
 dependencies = ["conda >=25.1"]
 
 [project.urls]
-repository = "https://github.com/jezdez/conda-pronto"
+repository = "https://github.com/jezdez/conda-ship"
 
 [project.entry-points.conda]
-conda-pronto = "conda_pronto.plugin"
+conda-ship = "conda_ship.plugin"
 
 [tool.hatch.build.targets.wheel]
-packages = ["python/conda_pronto"]
+packages = ["python/conda_ship"]
 
 [tool.pytest.ini_options]
 testpaths = ["python/tests"]

@@ -61,8 +61,6 @@ pub(crate) async fn ensure_bootstrapped(prefix: &Path) -> miette::Result<()> {
         bootstrap(
             prefix,
             false,
-            None,
-            None,
             LockSource::Embedded,
             None,
             false,
@@ -93,34 +91,7 @@ fn reject_dangerous_prefix(prefix: &Path) -> miette::Result<()> {
     Ok(())
 }
 
-pub(crate) fn validate_bootstrap_flags(
-    offline: bool,
-    no_lock: bool,
-    lockfile: &Option<std::path::PathBuf>,
-    bundle: &Option<std::path::PathBuf>,
-    channels: &Option<Vec<String>>,
-    packages: &Option<Vec<String>>,
-) -> miette::Result<()> {
-    if no_lock && lockfile.is_some() {
-        return Err(miette::miette!(
-            "--no-lock and --lockfile are incompatible (choose one package source)"
-        ));
-    }
-    if offline && no_lock {
-        return Err(miette::miette!(
-            "--offline and --no-lock are incompatible (offline mode requires a lockfile)"
-        ));
-    }
-    if no_lock && bundle.is_some() {
-        return Err(miette::miette!(
-            "--bundle and --no-lock are incompatible (bundles require a lockfile)"
-        ));
-    }
-    if !no_lock && (channels.is_some() || packages.is_some()) {
-        return Err(miette::miette!(
-            "--channel and --package only affect live solves; pass --no-lock or update the project lockfile"
-        ));
-    }
+pub(crate) fn validate_bootstrap_flags(bundle: &Option<std::path::PathBuf>) -> miette::Result<()> {
     if let Some(path) = bundle
         && !path.is_dir()
     {
@@ -136,8 +107,6 @@ pub(crate) fn validate_bootstrap_flags(
 pub(crate) async fn bootstrap(
     prefix: &Path,
     force: bool,
-    channels: Option<Vec<String>>,
-    extra_packages: Option<Vec<String>>,
     lock_source: LockSource,
     bundle: Option<std::path::PathBuf>,
     offline: bool,
@@ -177,11 +146,8 @@ pub(crate) async fn bootstrap(
     }
 
     let cfg = embedded_config();
-    let channels = channels.unwrap_or_else(|| cfg.channels.clone());
-    let mut specs = cfg.packages.clone();
-    if let Some(extra) = extra_packages {
-        specs.extend(extra);
-    }
+    let channels = cfg.channels.clone();
+    let specs = cfg.packages.clone();
 
     if verbosity != Verbosity::Quiet {
         eprintln!(
@@ -216,12 +182,6 @@ pub(crate) async fn bootstrap(
             }
             Some(content)
         }
-        LockSource::None => {
-            if verbosity != Verbosity::Quiet {
-                eprintln!("   Live solve (lockfile disabled)");
-            }
-            None
-        }
     };
 
     if let Some(ref bundle_dir) = bundle {
@@ -248,10 +208,10 @@ pub(crate) async fn bootstrap(
         })?;
         install::from_lockfile_offline(prefix, &content).await?;
     } else {
-        match &lock_content {
-            Some(content) => install::from_lockfile(prefix, content).await?,
-            None => install::from_solve(prefix, &channels, &specs).await?,
-        };
+        let content = lock_content.ok_or_else(|| {
+            miette::miette!("runtime has no stamped lockfile; pass --lockfile or rebuild it")
+        })?;
+        install::from_lockfile(prefix, &content).await?;
     }
 
     write_condarc(prefix, &channels)?;
@@ -612,7 +572,6 @@ pub(crate) fn print_disabled_init() -> ! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rstest::rstest;
     use tempfile::TempDir;
 
     #[test]
@@ -773,33 +732,15 @@ mod tests {
         assert_eq!(result, original, "file should be unchanged when no match");
     }
 
-    #[rstest]
-    #[case::offline_no_lock(true, true, false, false, false, "incompatible")]
-    #[case::bundle_missing_dir(false, false, true, false, false, "not a directory")]
-    #[case::no_lock_with_lockfile(false, true, false, true, false, "choose one package source")]
-    #[case::locked_with_package(false, false, false, false, true, "only affect live solves")]
-    fn test_validate_bootstrap_flags(
-        #[case] offline: bool,
-        #[case] no_lock: bool,
-        #[case] bad_bundle_path: bool,
-        #[case] has_lockfile: bool,
-        #[case] has_package: bool,
-        #[case] expected_err_contains: &str,
-    ) {
-        let bundle = if bad_bundle_path {
-            Some(std::path::PathBuf::from("/nonexistent/bundle/path"))
-        } else {
-            None
-        };
-        let lockfile = has_lockfile.then(|| std::path::PathBuf::from("runtime.lock"));
-        let packages = has_package.then(|| vec!["numpy".to_string()]);
-        let result =
-            validate_bootstrap_flags(offline, no_lock, &lockfile, &bundle, &None, &packages);
+    #[test]
+    fn test_validate_bootstrap_flags_rejects_missing_bundle_dir() {
+        let bundle = Some(std::path::PathBuf::from("/nonexistent/bundle/path"));
+        let result = validate_bootstrap_flags(&bundle);
         assert!(result.is_err(), "should fail validation");
         let err = result.unwrap_err().to_string();
         assert!(
-            err.contains(expected_err_contains),
-            "error should contain '{expected_err_contains}', got: {err}"
+            err.contains("not a directory"),
+            "error should contain 'not a directory', got: {err}"
         );
     }
 
@@ -807,13 +748,13 @@ mod tests {
     fn test_validate_bootstrap_flags_valid_bundle() {
         let tmp = TempDir::new().unwrap();
         let bundle = Some(tmp.path().to_path_buf());
-        let result = validate_bootstrap_flags(false, false, &None, &bundle, &None, &None);
+        let result = validate_bootstrap_flags(&bundle);
         assert!(result.is_ok(), "valid bundle path should pass validation");
     }
 
     #[test]
     fn test_validate_bootstrap_flags_no_flags() {
-        let result = validate_bootstrap_flags(false, false, &None, &None, &None, &None);
+        let result = validate_bootstrap_flags(&None);
         assert!(result.is_ok(), "no flags should pass validation");
     }
 }

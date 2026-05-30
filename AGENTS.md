@@ -1,13 +1,13 @@
-# AGENTS.md - conda-pronto coding guidelines
+# AGENTS.md - conda-ship coding guidelines
 
 ## Project structure
 
-- `conda-pronto` is the generic build system for producing ready-to-run conda
-  runtimes. It installs the `pronto` CLI.
+- `conda-ship` is the generic build system for producing ready-to-run conda
+  runtimes. It installs the `cs` CLI.
 
-- The Cargo workspace has one package, `conda-pronto`, with two binaries:
-  `pronto` for the builder CLI and `pronto-runtime` as the generic bootstrap
-  runtime template that conda-pronto stages into distribution artifacts.
+- The Cargo workspace has one package, `conda-ship`, with two binaries:
+  `cs` for the builder CLI and `conda-ship-runtime` as the generic runtime
+  template that conda-ship stages into distribution artifacts.
 
 - Do not add browser, WebAssembly, Emscripten, or JupyterLite behavior
   here. That work belongs in the separate `conda-wasm` repository.

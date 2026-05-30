@@ -1,56 +1,40 @@
-//! Integration tests verifying the embedded runtime lock has been pre-filtered.
+//! Integration tests verifying the derived runtime lock has been pre-filtered.
 #![cfg(feature = "runtime-template")]
 
-use std::path::PathBuf;
+fn package_names_from_inspect() -> Vec<String> {
+    let root = env!("CARGO_MANIFEST_DIR");
+    let assert = assert_cmd::cargo::cargo_bin_cmd!("cs")
+        .args(["inspect", "--json", "--root", root])
+        .assert()
+        .success();
+    let output = assert.get_output();
+    let inspect: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("failed to parse inspect JSON");
 
-use rattler_conda_types::{Platform, RepoDataRecord};
-use rattler_lock::LockFile;
-
-fn records_from_embedded_lock() -> Vec<RepoDataRecord> {
-    let lock_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join("pronto")
-        .join("runtime.lock");
-    let lock_content = std::fs::read_to_string(&lock_path).unwrap_or_else(|err| {
-        panic!(
-            "failed to read {}; run `pronto lock` first: {err}",
-            lock_path.display()
-        )
-    });
-    let lock_file = LockFile::from_str_with_base_directory(&lock_content, lock_path.parent())
-        .expect("failed to parse generated runtime lock");
-    let env = lock_file
-        .default_environment()
-        .expect("no default environment");
-    let platform = Platform::current();
-    let lock_platform = env
-        .platforms()
-        .find(|locked_platform| locked_platform.subdir() == platform)
-        .unwrap_or_else(|| panic!("no records for current platform {platform}"));
-    env.conda_repodata_records(lock_platform)
-        .expect("failed to extract records")
-        .expect("no records for current platform")
-}
-
-fn sorted_names(records: &[RepoDataRecord]) -> Vec<String> {
-    let mut names: Vec<String> = records
+    let mut names: Vec<_> = inspect["packages"]
+        .as_array()
+        .expect("inspect packages should be an array")
         .iter()
-        .map(|r| r.package_record.name.as_normalized().to_string())
+        .map(|package| {
+            package["name"]
+                .as_str()
+                .expect("inspect package should include a name")
+                .to_string()
+        })
         .collect();
     names.sort();
     names
 }
 
 #[test]
-fn test_embedded_lockfile_package_composition() {
-    let records = records_from_embedded_lock();
-    let names = sorted_names(&records);
+fn test_derived_lockfile_package_composition() {
+    let names = package_names_from_inspect();
 
     let excluded = ["conda-libmamba-solver", "libmamba", "libsolv"];
     for pkg in &excluded {
         assert!(
             !names.contains(&pkg.to_string()),
-            "embedded runtime lock should not contain {pkg}"
+            "derived runtime lock should not contain {pkg}"
         );
     }
 
@@ -58,11 +42,11 @@ fn test_embedded_lockfile_package_composition() {
     for pkg in &required {
         assert!(
             names.contains(&pkg.to_string()),
-            "embedded runtime lock should contain {pkg}"
+            "derived runtime lock should contain {pkg}"
         );
     }
     assert!(
         names.iter().any(|n| n.starts_with("python")),
-        "embedded runtime lock should contain python"
+        "derived runtime lock should contain python"
     );
 }

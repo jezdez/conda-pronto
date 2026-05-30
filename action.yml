@@ -1,7 +1,7 @@
 name: "Build conda runtime"
 description: >
   Build a custom conda runtime from a committed project lockfile using
-  released conda-pronto artifacts. Runs on the current runner; use a matrix
+  released conda-ship artifacts. Runs on the current runner; use a matrix
   strategy for multi-platform builds.
 branding:
   icon: package
@@ -9,30 +9,34 @@ branding:
 
 inputs:
   command:
-    description: "Runtime command name to build."
-    required: true
+    description: "Runtime command name to build. Overrides [tool.conda-ship].command when set."
+    required: false
+    default: ""
   root:
-    description: "Project root containing conda.toml/conda.lock, pixi.toml/pixi.lock, or pyproject.toml/pixi.lock."
+    description: "Project root containing conda.toml/conda.lock, pixi.toml/pixi.lock, or pyproject.toml with the matching lockfile."
     required: false
     default: "."
   layout:
-    description: "Artifact layout to build: online or embedded."
+    description: "Artifact layout to build: online, external, or embedded. Overrides [tool.conda-ship].layout when set."
     required: false
-    default: "online"
+    default: ""
   docs-url:
-    description: "Documentation URL embedded in the runtime help output."
+    description: "Documentation URL embedded in the runtime help output. Overrides [tool.conda-ship].docs-url when set."
     required: false
-    default: "https://jezdez.github.io/conda-pronto/"
+    default: ""
   scheme:
-    description: "Install scheme stamped into the runtime."
+    description: "Install scheme stamped into the runtime. Overrides [tool.conda-ship].scheme when set."
     required: false
-    default: "conda"
+    default: ""
   install-name:
     description: "Name used inside the install scheme."
     required: false
     default: ""
 
 outputs:
+  dist-path:
+    description: "Absolute path to the directory containing all generated runtime artifacts."
+    value: ${{ steps.stage.outputs.dist_path }}
   binary-path:
     description: "Absolute path to the built runtime."
     value: ${{ steps.stage.outputs.binary_path }}
@@ -51,6 +55,9 @@ outputs:
   checksums-path:
     description: "Absolute path to the SHA256 checksum file."
     value: ${{ steps.stage.outputs.checksums_path }}
+  bundle-path:
+    description: "Absolute path to the external bundle, when layout is external."
+    value: ${{ steps.stage.outputs.bundle_path }}
 
 runs:
   using: composite
@@ -97,8 +104,8 @@ runs:
           version="$(git -C "$ACTION_PATH" describe --tags --exact-match 2>/dev/null || true)"
         fi
         if [[ ! "$version" =~ ^v[0-9]+([.][0-9]+)*([-.][0-9A-Za-z.-]+)?$ ]]; then
-          echo "Could not infer a conda-pronto release tag from ${version:-<empty>}." >&2
-          echo "Use jezdez/conda-pronto@vX.Y.Z. Branch refs do not have release assets." >&2
+          echo "Could not infer a conda-ship release tag from ${version:-<empty>}." >&2
+          echo "Use jezdez/conda-ship@vX.Y.Z. Branch refs do not have release assets." >&2
           exit 1
         fi
 
@@ -120,38 +127,38 @@ runs:
           repository="$ACTION_REPOSITORY"
         fi
         if [ -z "$repository" ]; then
-          repository="jezdez/conda-pronto"
+          repository="jezdez/conda-ship"
         fi
         if [[ ! "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
           echo "Invalid action repository: ${repository}" >&2
           exit 1
         fi
 
-        tool_dir="${RUNNER_TEMP}/conda-pronto-${version}-${target}"
+        tool_dir="${RUNNER_TEMP}/conda-ship-${version}-${target}"
         mkdir -p "$tool_dir"
 
         echo "target=${target}" >> "$GITHUB_OUTPUT"
         echo "version=${version}" >> "$GITHUB_OUTPUT"
         echo "tool_dir=${tool_dir}" >> "$GITHUB_OUTPUT"
         echo "repository=${repository}" >> "$GITHUB_OUTPUT"
-        echo "pronto_asset=pronto-${target}${ext}" >> "$GITHUB_OUTPUT"
-        echo "template_asset=pronto-runtime-template-${target}${ext}" >> "$GITHUB_OUTPUT"
+        echo "cs_asset=cs-${target}${ext}" >> "$GITHUB_OUTPUT"
+        echo "template_asset=cs-runtime-template-${target}${ext}" >> "$GITHUB_OUTPUT"
 
-    - name: Download conda-pronto
+    - name: Download conda-ship
       id: download
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
-        PRONTO_ASSET: ${{ steps.resolve.outputs.pronto_asset }}
-        PRONTO_REPOSITORY: ${{ steps.resolve.outputs.repository }}
-        PRONTO_VERSION: ${{ steps.resolve.outputs.version }}
+        CS_ASSET: ${{ steps.resolve.outputs.cs_asset }}
+        CONDA_SHIP_REPOSITORY: ${{ steps.resolve.outputs.repository }}
+        CONDA_SHIP_VERSION: ${{ steps.resolve.outputs.version }}
         TEMPLATE_ASSET: ${{ steps.resolve.outputs.template_asset }}
         TOOL_DIR: ${{ steps.resolve.outputs.tool_dir }}
       run: |
-        base_url="https://github.com/${PRONTO_REPOSITORY}/releases/download/${PRONTO_VERSION}"
+        base_url="https://github.com/${CONDA_SHIP_REPOSITORY}/releases/download/${CONDA_SHIP_VERSION}"
         curl --fail --location --show-error --silent --retry 3 \
-          --output "${TOOL_DIR}/${PRONTO_ASSET}" \
-          "${base_url}/${PRONTO_ASSET}"
+          --output "${TOOL_DIR}/${CS_ASSET}" \
+          "${base_url}/${CS_ASSET}"
         curl --fail --location --show-error --silent --retry 3 \
           --output "${TOOL_DIR}/${TEMPLATE_ASSET}" \
           "${base_url}/${TEMPLATE_ASSET}"
@@ -163,18 +170,18 @@ runs:
           echo "GitHub CLI is required to verify release attestations." >&2
           exit 1
         fi
-        signer_workflow="${PRONTO_REPOSITORY}/.github/workflows/release.yml"
-        gh attestation verify "${TOOL_DIR}/${PRONTO_ASSET}" \
-          --repo "$PRONTO_REPOSITORY" \
+        signer_workflow="${CONDA_SHIP_REPOSITORY}/.github/workflows/release.yml"
+        gh attestation verify "${TOOL_DIR}/${CS_ASSET}" \
+          --repo "$CONDA_SHIP_REPOSITORY" \
           --signer-workflow "$signer_workflow" >/dev/null
         gh attestation verify "${TOOL_DIR}/${TEMPLATE_ASSET}" \
-          --repo "$PRONTO_REPOSITORY" \
+          --repo "$CONDA_SHIP_REPOSITORY" \
           --signer-workflow "$signer_workflow" >/dev/null
         gh attestation verify "${TOOL_DIR}/SHA256SUMS" \
-          --repo "$PRONTO_REPOSITORY" \
+          --repo "$CONDA_SHIP_REPOSITORY" \
           --signer-workflow "$signer_workflow" >/dev/null
 
-        grep -F "  ${PRONTO_ASSET}" "${TOOL_DIR}/SHA256SUMS" > "${TOOL_DIR}/SHA256SUMS.selected"
+        grep -F "  ${CS_ASSET}" "${TOOL_DIR}/SHA256SUMS" > "${TOOL_DIR}/SHA256SUMS.selected"
         grep -F "  ${TEMPLATE_ASSET}" "${TOOL_DIR}/SHA256SUMS" >> "${TOOL_DIR}/SHA256SUMS.selected"
         (
           cd "$TOOL_DIR"
@@ -185,51 +192,53 @@ runs:
           fi
         )
 
-        chmod +x "${TOOL_DIR}/${PRONTO_ASSET}" "${TOOL_DIR}/${TEMPLATE_ASSET}" || true
-        echo "pronto_path=${TOOL_DIR}/${PRONTO_ASSET}" >> "$GITHUB_OUTPUT"
+        chmod +x "${TOOL_DIR}/${CS_ASSET}" "${TOOL_DIR}/${TEMPLATE_ASSET}" || true
+        echo "cs_path=${TOOL_DIR}/${CS_ASSET}" >> "$GITHUB_OUTPUT"
         echo "template_path=${TOOL_DIR}/${TEMPLATE_ASSET}" >> "$GITHUB_OUTPUT"
 
     - name: Validate project input
       id: project
       shell: bash
       env:
-        PRONTO_LAYOUT: ${{ inputs.layout }}
-        PRONTO_COMMAND: ${{ inputs.command }}
-        PRONTO_INSTALL_NAME: ${{ inputs.install-name }}
-        PRONTO_ROOT: ${{ inputs.root }}
-        PRONTO_SCHEME: ${{ inputs.scheme }}
+        CONDA_SHIP_LAYOUT: ${{ inputs.layout }}
+        CONDA_SHIP_COMMAND: ${{ inputs.command }}
+        CONDA_SHIP_INSTALL_NAME: ${{ inputs.install-name }}
+        CONDA_SHIP_ROOT: ${{ inputs.root }}
+        CONDA_SHIP_SCHEME: ${{ inputs.scheme }}
       run: |
-        root="${PRONTO_ROOT:-.}"
+        root="${CONDA_SHIP_ROOT:-.}"
         case "$root" in
           *$'\n'*|*$'\r'*)
             echo "Project root must not contain newlines." >&2
             exit 1
             ;;
         esac
-        if [[ ! "$PRONTO_COMMAND" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-          echo "Invalid runtime command name: ${PRONTO_COMMAND}" >&2
+        if [ -n "$CONDA_SHIP_COMMAND" ] && [[ ! "$CONDA_SHIP_COMMAND" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+          echo "Invalid runtime command name: ${CONDA_SHIP_COMMAND}" >&2
           echo "Use ASCII letters, digits, dots, dashes, or underscores, starting with a letter or digit." >&2
           exit 1
         fi
-        case "$PRONTO_LAYOUT" in
-          online|embedded)
-            ;;
-          *)
-            echo "Unsupported layout: ${PRONTO_LAYOUT}. Use 'online' or 'embedded'." >&2
-            exit 1
-            ;;
-        esac
-        case "${PRONTO_SCHEME:-conda}" in
+        if [ -n "$CONDA_SHIP_LAYOUT" ]; then
+          case "$CONDA_SHIP_LAYOUT" in
+            online|external|embedded)
+              ;;
+            *)
+              echo "Unsupported layout: ${CONDA_SHIP_LAYOUT}. Use 'online', 'external', or 'embedded'." >&2
+              exit 1
+              ;;
+          esac
+        fi
+        case "${CONDA_SHIP_SCHEME:-conda}" in
           conda|data)
             ;;
           *)
-            echo "Unsupported install scheme: ${PRONTO_SCHEME}. Use 'conda' or 'data'." >&2
+            echo "Unsupported install scheme: ${CONDA_SHIP_SCHEME}. Use 'conda' or 'data'." >&2
             exit 1
             ;;
         esac
-        if [ -n "$PRONTO_INSTALL_NAME" ]; then
-          if [[ ! "$PRONTO_INSTALL_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-            echo "Invalid install name: ${PRONTO_INSTALL_NAME}" >&2
+        if [ -n "$CONDA_SHIP_INSTALL_NAME" ]; then
+          if [[ ! "$CONDA_SHIP_INSTALL_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "Invalid install name: ${CONDA_SHIP_INSTALL_NAME}" >&2
             echo "Use ASCII letters, digits, dots, dashes, or underscores, starting with a letter or digit." >&2
             exit 1
           fi
@@ -252,19 +261,26 @@ runs:
             exit 1
           fi
         elif [ -f "${root}/pyproject.toml" ]; then
-          if ! grep -Eq '^[[:space:]]*\[tool\.pixi(\]|\.)' "${root}/pyproject.toml"; then
-            echo "Found ${root}/pyproject.toml, but it does not contain a [tool.pixi] table." >&2
-            echo "Use conda.toml, pixi.toml, or a Pixi-compatible pyproject.toml." >&2
-            exit 1
-          fi
-          if [ ! -f "${root}/pixi.lock" ]; then
-            echo "Found ${root}/pyproject.toml but missing ${root}/pixi.lock." >&2
-            echo "Commit a solved lockfile before building release artifacts." >&2
+          if grep -Eq '^[[:space:]]*\[tool\.conda(\]|\.)' "${root}/pyproject.toml"; then
+            if [ ! -f "${root}/conda.lock" ]; then
+              echo "Found ${root}/pyproject.toml with [tool.conda] but missing ${root}/conda.lock." >&2
+              echo "Commit a solved lockfile before building release artifacts." >&2
+              exit 1
+            fi
+          elif grep -Eq '^[[:space:]]*\[tool\.pixi(\]|\.)' "${root}/pyproject.toml"; then
+            if [ ! -f "${root}/pixi.lock" ]; then
+              echo "Found ${root}/pyproject.toml with [tool.pixi] but missing ${root}/pixi.lock." >&2
+              echo "Commit a solved lockfile before building release artifacts." >&2
+              exit 1
+            fi
+          else
+            echo "Found ${root}/pyproject.toml, but it does not contain a [tool.conda] or [tool.pixi] table." >&2
+            echo "Use conda.toml, pixi.toml, or a supported pyproject.toml." >&2
             exit 1
           fi
         else
           echo "No conda.toml, pixi.toml, or pyproject.toml found in ${root}." >&2
-          echo "Add a project manifest and lockfile before using the conda-pronto action." >&2
+          echo "Add a project manifest and lockfile before using the conda-ship action." >&2
           exit 1
         fi
 
@@ -273,57 +289,84 @@ runs:
     - name: Build runtime
       shell: bash
       env:
-        PRONTO_DOCS_URL: ${{ inputs.docs-url }}
-        PRONTO_INSTALL_NAME: ${{ inputs.install-name }}
-        PRONTO_LAYOUT: ${{ inputs.layout }}
-        PRONTO_COMMAND: ${{ inputs.command }}
-        PRONTO_PATH: ${{ steps.download.outputs.pronto_path }}
-        PRONTO_ROOT: ${{ steps.project.outputs.root }}
-        PRONTO_SCHEME: ${{ inputs.scheme }}
-        PRONTO_TARGET: ${{ steps.resolve.outputs.target }}
+        CONDA_SHIP_DOCS_URL: ${{ inputs.docs-url }}
+        CONDA_SHIP_INSTALL_NAME: ${{ inputs.install-name }}
+        CONDA_SHIP_LAYOUT: ${{ inputs.layout }}
+        CONDA_SHIP_COMMAND: ${{ inputs.command }}
+        CS_PATH: ${{ steps.download.outputs.cs_path }}
+        CONDA_SHIP_ROOT: ${{ steps.project.outputs.root }}
+        CONDA_SHIP_SCHEME: ${{ inputs.scheme }}
+        CONDA_SHIP_TARGET: ${{ steps.resolve.outputs.target }}
         TEMPLATE_PATH: ${{ steps.download.outputs.template_path }}
       run: |
+        dist_dir="${RUNNER_TEMP}/conda-ship-${CONDA_SHIP_TARGET}-dist"
+        rm -rf "$dist_dir"
+        mkdir -p "$dist_dir"
+
         build_args=(
           build
-          --layout "$PRONTO_LAYOUT"
-          --command "$PRONTO_COMMAND"
-          --target "$PRONTO_TARGET"
-          --target-label "$PRONTO_TARGET"
+          --target "$CONDA_SHIP_TARGET"
+          --target-label "$CONDA_SHIP_TARGET"
           --template "$TEMPLATE_PATH"
-          --docs-url "$PRONTO_DOCS_URL"
-          --root "$PRONTO_ROOT"
-          --out-dir "${GITHUB_WORKSPACE}/.pronto-artifacts"
+          --root "$CONDA_SHIP_ROOT"
+          --out-dir "$dist_dir"
         )
-        build_args+=(--scheme "${PRONTO_SCHEME:-conda}")
-        if [ -n "$PRONTO_INSTALL_NAME" ]; then
-          build_args+=(--install-name "$PRONTO_INSTALL_NAME")
+        if [ -n "$CONDA_SHIP_DOCS_URL" ]; then
+          build_args+=(--docs-url "$CONDA_SHIP_DOCS_URL")
         fi
-        "$PRONTO_PATH" "${build_args[@]}"
+        if [ -n "$CONDA_SHIP_LAYOUT" ]; then
+          build_args+=(--layout "$CONDA_SHIP_LAYOUT")
+        fi
+        if [ -n "$CONDA_SHIP_COMMAND" ]; then
+          build_args+=(--command "$CONDA_SHIP_COMMAND")
+        fi
+        if [ -n "$CONDA_SHIP_SCHEME" ]; then
+          build_args+=(--scheme "$CONDA_SHIP_SCHEME")
+        fi
+        if [ -n "$CONDA_SHIP_INSTALL_NAME" ]; then
+          build_args+=(--install-name "$CONDA_SHIP_INSTALL_NAME")
+        fi
+        "$CS_PATH" "${build_args[@]}" --dry-run
+        "$CS_PATH" "${build_args[@]}"
 
     - name: Stage runtime outputs
       id: stage
       shell: bash
       env:
-        PRONTO_LAYOUT: ${{ inputs.layout }}
-        PRONTO_COMMAND: ${{ inputs.command }}
-        PRONTO_TARGET: ${{ steps.resolve.outputs.target }}
+        CONDA_SHIP_TARGET: ${{ steps.resolve.outputs.target }}
       run: |
-        if [ "$PRONTO_LAYOUT" = "embedded" ]; then
-          prefix="${PRONTO_COMMAND}z"
-        else
-          prefix="$PRONTO_COMMAND"
+        artifact_dir="${RUNNER_TEMP}/conda-ship-${CONDA_SHIP_TARGET}-dist"
+        info_count="$(find "$artifact_dir" -maxdepth 1 -type f -name "*.info.json" | wc -l | tr -d ' ')"
+        if [ "$info_count" -ne 1 ]; then
+          echo "Expected exactly one conda-ship info file in ${artifact_dir}, found ${info_count}." >&2
+          exit 1
         fi
-        stem="${prefix}-${PRONTO_TARGET}"
-        if [[ "$PRONTO_TARGET" == *"windows"* ]]; then
-          asset_name="${stem}.exe"
+        info_path="$(find "$artifact_dir" -maxdepth 1 -type f -name "*.info.json" | sort | sed -n '1p')"
+        stem_path="${info_path%.info.json}"
+        if [ -f "${stem_path}.exe" ]; then
+          binary_path="${stem_path}.exe"
         else
-          asset_name="${stem}"
+          binary_path="${stem_path}"
         fi
-        artifact_dir="${GITHUB_WORKSPACE}/.pronto-artifacts"
-        binary_path="${artifact_dir}/${asset_name}"
+        lock_path="${stem_path}.runtime.lock"
+        package_list_path="${stem_path}.packages.txt"
+        checksums_path="${stem_path}.sha256"
+        for required in "$binary_path" "$info_path" "$lock_path" "$package_list_path" "$checksums_path"; do
+          if [ ! -f "$required" ]; then
+            echo "Expected conda-ship output was not created: ${required}" >&2
+            exit 1
+          fi
+        done
+        echo "dist_path=${artifact_dir}" >> "$GITHUB_OUTPUT"
         echo "binary_path=${binary_path}" >> "$GITHUB_OUTPUT"
-        echo "asset_name=${asset_name}" >> "$GITHUB_OUTPUT"
-        echo "info_path=${artifact_dir}/${stem}.info.json" >> "$GITHUB_OUTPUT"
-        echo "lock_path=${artifact_dir}/${stem}.runtime.lock" >> "$GITHUB_OUTPUT"
-        echo "package_list_path=${artifact_dir}/${stem}.packages.txt" >> "$GITHUB_OUTPUT"
-        echo "checksums_path=${artifact_dir}/${stem}.sha256" >> "$GITHUB_OUTPUT"
+        echo "asset_name=$(basename "$binary_path")" >> "$GITHUB_OUTPUT"
+        echo "info_path=${info_path}" >> "$GITHUB_OUTPUT"
+        echo "lock_path=${lock_path}" >> "$GITHUB_OUTPUT"
+        echo "package_list_path=${package_list_path}" >> "$GITHUB_OUTPUT"
+        echo "checksums_path=${checksums_path}" >> "$GITHUB_OUTPUT"
+        bundle_path="${stem_path}.bundle.tar.zst"
+        if [ -f "$bundle_path" ]; then
+          echo "bundle_path=${bundle_path}" >> "$GITHUB_OUTPUT"
+        else
+          echo "bundle_path=" >> "$GITHUB_OUTPUT"
+        fi

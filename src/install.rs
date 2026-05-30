@@ -1,10 +1,8 @@
-//! Package installation — lockfile fast-path and live-solve fallback.
+//! Package installation from stamped lockfiles and bundles.
 
 use std::{
     borrow::Cow,
     collections::HashMap,
-    env,
-    future::IntoFuture,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
@@ -18,13 +16,10 @@ use rattler::{
     package_cache::PackageCache,
 };
 use rattler_conda_types::{
-    Channel, ChannelConfig, GenericVirtualPackage, MatchSpec, ParseMatchSpecOptions, Platform,
-    PrefixRecord, RepoDataRecord,
+    MatchSpec, ParseMatchSpecOptions, Platform, PrefixRecord, RepoDataRecord,
 };
 use rattler_lock::LockFile;
 use rattler_networking::AuthenticationMiddleware;
-use rattler_repodata_gateway::{Gateway, RepoData, SourceConfig};
-use rattler_solve::{SolverImpl, SolverTask, resolvo};
 use sha2::{Digest, Sha256};
 
 use crate::config;
@@ -385,107 +380,6 @@ fn hex_bytes(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Fetch repodata, solve, and install packages into the prefix.
-pub async fn from_solve(
-    prefix: &Path,
-    channels: &[String],
-    specs: &[String],
-) -> miette::Result<()> {
-    let channel_config =
-        ChannelConfig::default_with_root_dir(env::current_dir().into_diagnostic()?);
-    let platform = Platform::current();
-    let match_specs = parse_specs(specs)?;
-
-    let cache_dir = default_cache_dir()
-        .map_err(|e| miette::miette!("could not determine cache directory: {}", e))?;
-    rattler_cache::ensure_cache_dir(&cache_dir)
-        .map_err(|e| miette::miette!("could not create cache directory: {}", e))?;
-
-    let parsed_channels: Vec<Channel> = channels
-        .iter()
-        .map(|c| Channel::from_str(c, &channel_config))
-        .collect::<Result<Vec<_>, _>>()
-        .into_diagnostic()?;
-
-    let installed = PrefixRecord::collect_from_prefix::<PrefixRecord>(prefix).into_diagnostic()?;
-    let client = make_download_client()?;
-
-    let gateway = Gateway::builder()
-        .with_cache_dir(cache_dir.join(rattler_cache::REPODATA_CACHE_DIR))
-        .with_package_cache(PackageCache::new(
-            cache_dir.join(rattler_cache::PACKAGE_CACHE_DIR),
-        ))
-        .with_client(client.clone())
-        .with_channel_config(rattler_repodata_gateway::ChannelConfig {
-            default: SourceConfig {
-                sharded_enabled: true,
-                ..SourceConfig::default()
-            },
-            per_channel: HashMap::new(),
-        })
-        .finish();
-
-    let start = Instant::now();
-    let repo_data = wrap_async_spinner(
-        "fetching repodata",
-        gateway
-            .query(
-                parsed_channels,
-                [platform, Platform::NoArch],
-                match_specs.clone(),
-            )
-            .recursive(true),
-    )
-    .await
-    .into_diagnostic()
-    .context("failed to load repodata")?;
-
-    let total_records: usize = repo_data.iter().map(RepoData::len).sum();
-    eprintln!(
-        "   Loaded {} records in {:.1}s",
-        total_records,
-        start.elapsed().as_secs_f64()
-    );
-
-    let virtual_packages = rattler_virtual_packages::VirtualPackage::detect(
-        &rattler_virtual_packages::VirtualPackageOverrides::default(),
-    )
-    .map(|vpkgs| {
-        vpkgs
-            .iter()
-            .map(|vpkg| GenericVirtualPackage::from(vpkg.clone()))
-            .collect::<Vec<_>>()
-    })
-    .into_diagnostic()?;
-
-    let locked_package_records: Vec<_> = installed
-        .iter()
-        .map(|r| r.repodata_record.clone())
-        .collect();
-
-    let specs_clone = match_specs.clone();
-    let solved = tokio::task::spawn_blocking(move || {
-        let locked_packages = locked_package_records.iter().collect();
-        let solver_task = SolverTask {
-            locked_packages,
-            virtual_packages,
-            specs: specs_clone,
-            ..SolverTask::from_iter(&repo_data)
-        };
-        wrap_spinner("solving environment", move || {
-            resolvo::Solver.solve(solver_task)
-        })
-    })
-    .await
-    .into_diagnostic()
-    .context("solver task panicked")?
-    .into_diagnostic()
-    .context("failed to solve environment")?
-    .records;
-
-    run_installer(prefix, platform, &installed, &match_specs, client, solved).await
-}
-
 pub(crate) fn parse_specs(specs: &[String]) -> miette::Result<Vec<MatchSpec>> {
     specs
         .iter()
@@ -557,19 +451,6 @@ pub(crate) fn wrap_spinner<T, F: FnOnce() -> T>(msg: impl Into<Cow<'static, str>
     pb.set_style(ProgressStyle::with_template("   {spinner:.green} {msg}").unwrap());
     pb.set_message(msg);
     let result = func();
-    pb.finish_and_clear();
-    result
-}
-
-async fn wrap_async_spinner<T, F: IntoFuture<Output = T>>(
-    msg: impl Into<Cow<'static, str>>,
-    fut: F,
-) -> T {
-    let pb = multi_progress().add(ProgressBar::new_spinner());
-    pb.enable_steady_tick(Duration::from_millis(100));
-    pb.set_style(ProgressStyle::with_template("   {spinner:.green} {msg}").unwrap());
-    pb.set_message(msg);
-    let result = fut.into_future().await;
     pb.finish_and_clear();
     result
 }

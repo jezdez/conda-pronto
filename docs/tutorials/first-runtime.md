@@ -1,88 +1,263 @@
 # Build Your First Runtime
 
-This tutorial builds a local conda runtime named `demo` and runs it
-against a temporary prefix.
+This tutorial builds a local conda runtime named `demo` from either a
+conda-workspaces project or a Pixi project.
 
-`demo` is the example command name. conda-pronto itself provides the builder and
-generic runtime template; it does not publish a default runtime.
+You will create a small project, lock it, build a runtime binary, bootstrap that
+runtime into a temporary install path, and then remove it again.
 
-## Prerequisites
+## Before You Start
 
-Run this tutorial from a project root with a manifest, a lockfile, a solved
-`runtime` environment, and a `[tool.pronto]` section. A conda-pronto source
-checkout works for that purpose because it carries a Pixi-compatible example
-configuration.
+You need:
 
-Installed `pronto` builds need a prebuilt runtime template passed with
-`--template`. In a conda-pronto source checkout you can omit that option;
-the builder will compile the local `pronto-runtime` target before stamping it.
+- `conda-ship`
+- either {external+conda-workspaces:doc}`conda-workspaces <index>` or
+  [Pixi](https://pixi.sh/latest/)
+- network access for solving and for the first bootstrap
 
-Make sure the `pronto` CLI is available on your `PATH`, then derive the runtime
-lock that will be stamped into the runtime:
+Install the tools in an environment where you want to run the builder:
 
-```bash
-pronto lock
-```
+::::{tab-set}
 
-`pronto lock` derives the runtime lock from the selected solved environment and
-the conda-pronto runtime configuration, then writes it to `target/pronto/runtime.lock`.
-
-## Inspect The Runtime Package Set
-
-Check the package set that will be stamped into the runtime:
+:::{tab-item} conda-workspaces
 
 ```bash
-pronto inspect
+conda create -n cs-demo -c conda-forge conda-ship conda-workspaces
+conda activate cs-demo
 ```
 
-The output lists every platform in the derived runtime lock, then prints the
-packages for the current platform.
-
-## Build An Online Runtime
-
-Build a runtime that contains lockfile metadata but downloads package
-archives during bootstrap:
+Check that both commands are available:
 
 ```bash
-pronto build --layout online --command demo
+cs --version
+conda workspace --help
 ```
 
-The staged files are written to `dist/`. The runtime is staged as `demo`
-on Unix and `demo.exe` on Windows.
+:::
 
-## Smoke Test The Runtime
-
-Run the staged runtime through conda-pronto:
+:::{tab-item} Pixi
 
 ```bash
-pronto run --command demo -- --path /tmp/demo bootstrap
+conda create -n cs-demo -c conda-forge conda-ship pixi
+conda activate cs-demo
 ```
 
-Then ask the generated runtime for status:
+Check that both commands are available:
 
 ```bash
-dist/demo --path /tmp/demo status
+cs --version
+pixi --version
 ```
 
-The status output reports the command name, install path, configured channels,
-configured package specs, installed package count, and conda executable path.
+:::
 
-## Build An Embedded Runtime
+::::
 
-Build a runtime that carries compressed package archives inside the binary:
+## Create A Project
+
+Create an empty project directory:
 
 ```bash
-pronto build --layout embedded --command demo
+mkdir demo-runtime
+cd demo-runtime
 ```
 
-The embedded runtime uses the `z` suffix, so the binary is staged as
-`dist/demoz` on Unix and `dist/demoz.exe` on Windows.
+Then choose the manifest tool you want to use. The two paths produce the same
+runtime intent: a `runtime` environment containing conda itself, the rattler
+solver plugin, and conda-spawn for `demo shell`.
 
-Run the embedded runtime the same way:
+::::{tab-set}
+
+:::{tab-item} conda-workspaces
+
+Create a `conda.toml`:
 
 ```bash
-dist/demoz --path /tmp/demoz bootstrap
+conda workspace init --format conda --name demo-runtime
 ```
 
-The embedded bundle is detected automatically. No `--bundle` or `--offline`
-flag is required.
+Add the runtime packages to a `runtime` feature. `conda workspace add` creates
+the matching `runtime` environment in the manifest:
+
+```bash
+conda workspace add --feature runtime --no-lockfile-update \
+  "python>=3.12" \
+  "conda>=25.1" \
+  conda-rattler-solver \
+  "conda-spawn>=0.1.0"
+```
+
+Add conda-ship's build policy:
+
+```bash
+cat >> conda.toml <<'TOML'
+
+[tool.conda-ship]
+command = "demo"
+layout = "online"
+source-environment = "runtime"
+exclude = ["conda-libmamba-solver"]
+TOML
+```
+
+:::
+
+:::{tab-item} Pixi
+
+Create a `pixi.toml`:
+
+```bash
+pixi init --channel conda-forge
+```
+
+Add the runtime feature, runtime environment, and conda-ship build policy:
+
+```bash
+cat >> pixi.toml <<'TOML'
+
+[feature.runtime.dependencies]
+
+[environments]
+runtime = { features = ["runtime"], no-default-feature = true }
+
+[tool.conda-ship]
+command = "demo"
+layout = "online"
+source-environment = "runtime"
+exclude = ["conda-libmamba-solver"]
+TOML
+```
+
+Use Pixi's native add command to put packages in the `runtime` feature:
+
+```bash
+pixi add --feature runtime --no-install \
+  "python>=3.12" \
+  "conda>=25.1" \
+  conda-rattler-solver \
+  "conda-spawn>=0.1.0"
+```
+
+:::
+
+::::
+
+## Lock The Project
+
+Solve the source lockfile with the tool that owns the manifest:
+
+::::{tab-set}
+
+:::{tab-item} conda-workspaces
+
+```bash
+conda workspace lock
+```
+
+This writes `conda.lock`.
+
+:::
+
+:::{tab-item} Pixi
+
+```bash
+pixi lock
+```
+
+This writes `pixi.lock`. The earlier `pixi add --no-install` command may have
+already refreshed it; running `pixi lock` here makes the tutorial state
+explicit.
+
+:::
+
+::::
+
+conda-ship consumes the matching lockfile; it does not solve directly from
+loose package names during normal builds. `cs build` will derive its own
+runtime lock from this source lockfile.
+
+## Inspect The Package Set
+
+Run a preflight check before building. This derives the runtime package set,
+applies exclusions, and prints the selected packages without writing files:
+
+```bash
+cs inspect
+```
+
+The output lists the manifest and lockfile conda-ship selected, each locked
+platform, and the package set for your current platform.
+
+## Build The Runtime
+
+Build an online runtime named `demo`:
+
+```bash
+cs build
+```
+
+The generated runtime is written to `dist/demo` on Unix and `dist/demo.exe` on
+Windows.
+
+An online runtime contains the lockfile and runtime metadata. It downloads conda
+package archives when it bootstraps.
+
+## Smoke-Test The Runtime
+
+For this tutorial, bootstrap the generated runtime into a temporary local path
+to prove that the artifact works:
+
+```bash
+mkdir -p .tmp
+./dist/demo --path "$PWD/.tmp/demo" bootstrap
+```
+
+This creates a conda installation managed by the `demo` runtime. This local
+bootstrap is only a smoke test; a real downstream distribution should document
+how its users install and update the runtime it publishes.
+
+Check it:
+
+```bash
+./dist/demo --path "$PWD/.tmp/demo" status
+```
+
+The status output shows the install path, configured channels, package metadata,
+installed package count, and conda executable path.
+
+Clean up the temporary install:
+
+```bash
+./dist/demo --path "$PWD/.tmp/demo" uninstall --yes
+```
+
+## Optional: Build An Embedded Runtime
+
+The embedded layout puts compressed package archives inside the generated binary.
+This makes the build slower and the binary larger, but bootstrap no longer needs
+to download package archives.
+
+```bash
+cs build --layout embedded
+```
+
+Embedded runtimes use the `z` suffix, so this stages `dist/demoz` on Unix and
+`dist/demoz.exe` on Windows.
+
+Smoke-test it:
+
+```bash
+./dist/demoz --path "$PWD/.tmp/demoz" bootstrap
+./dist/demoz --path "$PWD/.tmp/demoz" status
+./dist/demoz --path "$PWD/.tmp/demoz" uninstall --yes
+```
+
+## What You Learned
+
+You created a small workspace project, solved it, built an online runtime, and
+used that binary to install and manage its own conda prefix in a temporary smoke
+test.
+
+For a real downstream distribution, choose a command name owned by that
+distribution, keep its package choices in the source manifest, and publish the
+staged files from `dist/`.

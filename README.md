@@ -1,12 +1,12 @@
-# conda-pronto
+# conda-ship
 
 Build ready-to-run conda runtimes.
 
-`conda-pronto` is a generic builder for single-binary conda runtimes. It
-installs the `pronto` CLI.
+`conda-ship` is a generic builder for single-binary conda runtimes. It
+installs the `cs` CLI.
 
-`conda-express` is a downstream distribution that uses conda-pronto to publish the
-official `cx` and `cxz` runtimes. conda-pronto owns the generic builder; a
+`conda-express` is a downstream distribution that uses conda-ship to publish the
+official `cx` and `cxz` runtimes. conda-ship owns the generic builder; a
 downstream distribution owns its package set, command names, release channels,
 and installer wrappers.
 
@@ -16,40 +16,47 @@ Artifact layouts:
 - `external`: runtime `<command>` plus `<command>.bundle.tar.zst`.
 - `embedded`: runtime `<command>z` with the compressed bundle embedded in one binary.
 
-The CLI builds from a solved downstream project. Installed builds should pass a
-released runtime template; source checkouts can omit `--template` while
-developing conda-pronto itself:
+The CLI builds from a solved downstream project. Packaged builds find the
+installed runtime template automatically; source checkouts can omit
+`--template` while developing conda-ship itself:
 
-```bash
-pronto lock
-pronto inspect
-pronto build --layout online --command demo --template ./pronto-runtime-template
-pronto build --layout embedded --command demo --template ./pronto-runtime-template
-pronto run --command demo -- --path /tmp/demo-smoke bootstrap
+```toml
+[tool.conda-ship]
+command = "demo"
+layout = "online"
+source-environment = "runtime"
 ```
 
-Every `pronto build` writes the runtime binary plus artifact metadata: the
+```bash
+cs inspect
+cs build --dry-run
+cs build
+cs build --layout embedded
+cs run -- --path /tmp/demo-smoke bootstrap
+```
+
+Every `cs build` writes the runtime binary plus artifact metadata: the
 runtime lock, a tab-separated package list, an info JSON document, and SHA256
 checksums. The runtime is stamped with the runtime lock, distribution
 metadata, and optional embedded bundle before checksums are written. The GitHub
-Action downloads tagged `pronto` and runtime-template release assets, verifies
+Action downloads tagged `cs` and runtime-template release assets, verifies
 their GitHub attestations and `SHA256SUMS`, and then uses the same stamping path
 against a committed downstream manifest and lockfile.
 
-Most users run the builder as `pronto`. The Python package can also make
-`conda pronto` available inside a conda environment; that command is a shortcut
-for the same `pronto` executable. Conda packages install the Rust binary and
+Most users run the builder as `cs`. The Python package can also make
+`conda ship` available inside a conda environment; that command is a shortcut
+for the same `cs` executable. Conda packages install the Rust binary and
 the small Python adapter together.
 
 Generic runtime behavior stays here; opinionated package sets and distribution
 defaults belong in downstream distributions.
 
 `conda.toml` plus `conda.lock` is the preferred manifest/lockfile pair for new
-conda-pronto project metadata. `pixi.toml` plus `pixi.lock` and Pixi's
-`pyproject.toml` plus `pixi.lock` remain supported for Pixi-compatible
-workflows.
+conda-ship project metadata. `pyproject.toml` with `[tool.conda]` also uses
+`conda.lock`. `pixi.toml` plus `pixi.lock` and `pyproject.toml` with
+`[tool.pixi]` plus `pixi.lock` remain supported for Pixi-compatible workflows.
 
-`pronto` is not an OS installer generator and does not target `.sh`, `.pkg`, or
+`cs` is not an OS installer generator and does not target `.sh`, `.pkg`, or
 `.msi` output. It produces runtimes that can be distributed directly
 or wrapped by Homebrew, constructor, Docker, enterprise packaging systems, and
 other release tooling.

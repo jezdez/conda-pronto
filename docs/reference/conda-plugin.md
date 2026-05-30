@@ -1,54 +1,50 @@
-# `conda pronto` Reference
+# `conda ship` Reference
 
-Most users run conda-pronto as `pronto`.
+Most users run conda-ship as `cs`.
 
-When `conda-pronto` is installed in a conda environment, it can also add a
-`conda pronto` command. This is only a conda-style shortcut for the same
+When `conda-ship` is installed in a conda environment, it can also add a
+`conda ship` command. This is only a conda-style shortcut for the same
 builder:
 
 ```bash
-conda pronto lock
-conda pronto inspect
-conda pronto build --layout online --command demo --template ./pronto-runtime-template
+conda ship inspect
+conda ship build
 ```
 
-`conda pronto ...` runs the installed `pronto` executable with the same
-arguments. It is not a separate builder and it does not make conda-pronto part
+`conda ship ...` runs the installed `cs` executable with the same
+arguments. It is not a separate builder and it does not make conda-ship part
 of conda itself.
 
-Installed builds pass `--template` to stamp a prebuilt generic runtime
-template; source checkouts can omit that option while developing conda-pronto
-itself.
+Packaged builds find the installed runtime template automatically. Source
+checkouts can omit `--template` while developing conda-ship itself; that
+fallback builds the template locally.
 
 ## Packaging Details
 
-`conda-pronto` first looks for a `pronto` executable next to the current Python
+`conda-ship` first looks for a `cs` executable next to the current Python
 interpreter, then falls back to `PATH`.
 
 A conda package must install both pieces into the same environment:
 
-- the Rust-built `pronto` executable
-- the Python `conda_pronto` adapter package
+- the Rust-built `cs` executable
+- the Python `conda_ship` adapter package
 
-For custom packaging or tests, set `CONDA_PRONTO_EXECUTABLE` to an explicit
+For custom packaging or tests, set `CONDA_SHIP_EXECUTABLE` to an explicit
 executable path.
 
 ## Argument Forwarding
 
-Arguments after `conda pronto` are passed to `pronto`:
+Arguments after `conda ship` are passed to `cs`:
 
 ```bash
-conda pronto build \
-  --layout embedded \
-  --command demo \
-  --template ./pronto-runtime-template
+conda ship build --layout embedded
 ```
 
 When you need to pass an argument that conda's own parser would consume, insert
-`--` before the conda-pronto arguments:
+`--` before the conda-ship arguments:
 
 ```bash
-conda pronto -- --help
+conda ship -- --help
 ```
 
-Running `conda pronto` without arguments shows `pronto --help`.
+Running `conda ship` without arguments shows `cs --help`.

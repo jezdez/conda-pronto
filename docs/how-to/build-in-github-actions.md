@@ -1,17 +1,19 @@
 # Build In GitHub Actions
 
 Use the composite action when a downstream distribution repository wants
-conda-pronto to build release artifacts in CI.
+conda-ship to build release artifacts in CI.
 
-The action is the public CI interface for conda-pronto-built runtimes.
+The action is the public CI interface for conda-ship-built runtimes.
 Downstream repositories, including conda-express, keep their package set in a
 committed manifest and lockfile. The action reads that project input and stamps
 a runtime instead of carrying a copy of the generic builder.
 
-Pin the action to a conda-pronto release tag. The action downloads the matching
-`pronto` and `pronto-runtime-template` release assets, verifies their GitHub
+Pin the action to a conda-ship release tag. The action downloads the matching
+`cs` and `cs-runtime-template` release assets, verifies their GitHub
 artifact attestations and release `SHA256SUMS`, and stamps the generated
-runtime.
+runtime. It runs `cs build --dry-run` before the real build so manifest,
+lockfile, naming, template, install-scheme, and bundle metadata issues fail
+before artifact files are written.
 
 GitHub-hosted runners already include the GitHub CLI used for attestation
 verification. Self-hosted runners must provide `gh`.
@@ -19,7 +21,10 @@ verification. Self-hosted runners must provide `gh`.
 ## Single-Platform Example
 
 The checked-out repository must contain `conda.toml` plus `conda.lock`,
-`pixi.toml` plus `pixi.lock`, or Pixi's `pyproject.toml` plus `pixi.lock`.
+`pyproject.toml` with `[tool.conda]` plus `conda.lock`, `pixi.toml` plus
+`pixi.lock`, or `pyproject.toml` with `[tool.pixi]` plus `pixi.lock`. These
+examples assume the manifest contains `[tool.conda-ship].command`; pass
+`command` only when CI should override that value.
 
 ```yaml
 jobs:
@@ -28,20 +33,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: jezdez/conda-pronto@v0.1.0
-        id: pronto
-        with:
-          command: demo
+      - uses: jezdez/conda-ship@v0.1.0
+        id: cs
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.pronto.outputs.asset-name }}
-          path: |
-            ${{ steps.pronto.outputs.binary-path }}
-            ${{ steps.pronto.outputs.info-path }}
-            ${{ steps.pronto.outputs.lock-path }}
-            ${{ steps.pronto.outputs.package-list-path }}
-            ${{ steps.pronto.outputs.checksums-path }}
+          name: ${{ steps.cs.outputs.asset-name }}
+          path: ${{ steps.cs.outputs.dist-path }}
 ```
 
 Use a tag for release builds. Branch refs do not have matching release assets.
@@ -55,10 +53,9 @@ at that directory:
 steps:
   - uses: actions/checkout@v4
 
-  - uses: jezdez/conda-pronto@v0.1.0
-    id: pronto
+  - uses: jezdez/conda-ship@v0.1.0
+    id: cs
     with:
-      command: demo
       root: dist/demo
 ```
 
@@ -66,9 +63,26 @@ The action does not run a solve, generate a manifest, or refresh a lockfile.
 Update and commit the lockfile before running release builds.
 
 Use `scheme` for a named install policy and `install-name` for the name inside
-that scheme. When neither is set, the action uses `scheme: conda` and the
-runtime command name as the install name. A command named `demo` therefore
-installs below `~/.conda/demo`.
+that scheme. When neither is set, the action leaves those values to
+`[tool.conda-ship]` and the runtime defaults. With the default `conda` scheme,
+a command named `demo` installs below `~/.conda/demo`.
+
+## External Bundle Example
+
+Set `layout` to `external` when you want to distribute the runtime and package
+bundle as separate files:
+
+```yaml
+- uses: jezdez/conda-ship@v0.1.0
+  id: cs
+  with:
+    layout: external
+
+- uses: actions/upload-artifact@v4
+  with:
+    name: ${{ steps.cs.outputs.asset-name }}
+    path: ${{ steps.cs.outputs.dist-path }}
+```
 
 ## Embedded Bundle Example
 
@@ -76,10 +90,9 @@ Set `layout` to `embedded` when the runtime must bootstrap without network
 access:
 
 ```yaml
-- uses: jezdez/conda-pronto@v0.1.0
-  id: pronto
+- uses: jezdez/conda-ship@v0.1.0
+  id: cs
   with:
-    command: demo
     layout: embedded
 ```
 
@@ -102,17 +115,16 @@ runs-on: ${{ matrix.os }}
 steps:
   - uses: actions/checkout@v4
 
-  - uses: jezdez/conda-pronto@v0.1.0
-    id: pronto
-    with:
-      command: demo
+  - uses: jezdez/conda-ship@v0.1.0
+    id: cs
 ```
 
 Each job emits an asset name qualified with the runner target triple.
 
 ## Downstream Release Preparation
 
-Use the action output paths as the source of truth for release uploads and
-package-manager wrappers. A downstream repository can upload the runtime,
-`.info.json`, `.runtime.lock`, `.packages.txt`, and `.sha256` files together so
-users and packagers can audit exactly what was built.
+Use `dist-path` as the source of truth for artifact uploads. It contains the
+runtime, optional external bundle, `.info.json`, `.runtime.lock`,
+`.packages.txt`, and `.sha256` files for that build. The individual path
+outputs are still available when release tooling or package-manager wrappers
+need to address one file directly.

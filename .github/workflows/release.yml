@@ -74,11 +74,11 @@ jobs:
             exit 1
           fi
 
-      - name: Build pronto CLI
-        run: pixi run -- cargo build --locked --release --bin pronto
+      - name: Build cs CLI
+        run: pixi run -- cargo build --locked --release --bin cs
 
       - name: Build runtime template
-        run: pixi run -- cargo build --locked --release --bin pronto-runtime --features runtime-template
+        run: pixi run -- cargo build --locked --release --bin conda-ship-runtime --features runtime-template
 
       - name: Stage release assets
         shell: bash
@@ -88,8 +88,8 @@ jobs:
           if [[ "$TARGET" == *"windows"* ]]; then
             ext=".exe"
           fi
-          cp "target/release/pronto${ext}" "release-assets/pronto-${TARGET}${ext}"
-          cp "target/release/pronto-runtime${ext}" "release-assets/pronto-runtime-template-${TARGET}${ext}"
+          cp "target/release/cs${ext}" "release-assets/cs-${TARGET}${ext}"
+          cp "target/release/conda-ship-runtime${ext}" "release-assets/cs-runtime-template-${TARGET}${ext}"
 
       - name: Attest release assets
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
@@ -146,5 +146,5 @@ jobs:
             gh release create "$RELEASE_TAG" "${files[@]}" \
               --verify-tag \
               --title "$RELEASE_TAG" \
-              --notes "conda-pronto ${RELEASE_TAG}"
+              --notes "conda-ship ${RELEASE_TAG}"
           fi

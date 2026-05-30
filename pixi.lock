@@ -8452,7 +8452,7 @@ packages:
   size: 388453
   timestamp: 1764777142545
 - pypi: .
-  name: conda-pronto
+  name: conda-ship
   requires_dist:
   - conda>=25.1
   requires_python: '>=3.10'

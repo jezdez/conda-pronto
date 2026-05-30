@@ -16,10 +16,7 @@ files. This is useful when an installer or package manager already knows how to
 place supporting files next to the binary.
 
 ```bash
-pronto build \
-  --layout external \
-  --command demo \
-  --template ./pronto-runtime-template
+cs build --layout external
 ```
 :::
 
@@ -28,10 +25,7 @@ Use `embedded` when you want one larger runtime that can bootstrap without a
 separate bundle file.
 
 ```bash
-pronto build \
-  --layout embedded \
-  --command demo \
-  --template ./pronto-runtime-template
+cs build --layout embedded
 ```
 :::
 
@@ -56,7 +50,7 @@ tar -I zstd -xf demo.bundle.tar.zst -C /opt/demo-bundle
 demo --path /opt/demo bootstrap --bundle /opt/demo-bundle --offline
 ```
 
-conda-pronto also stamps a command-specific bundle environment variable into the
+conda-ship also stamps a command-specific bundle environment variable into the
 runtime. For a command named `demo`, that variable is
 `DEMO_BUNDLE`.
 

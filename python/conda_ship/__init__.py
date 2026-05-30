@@ -1,4 +1,4 @@
-"""Conda plugin adapter for conda-pronto."""
+"""Conda plugin adapter for conda-ship."""
 
 from __future__ import annotations
 
@@ -9,6 +9,6 @@ except ImportError:  # pragma: no cover
 
 
 try:
-    __version__ = version("conda-pronto")
+    __version__ = version("conda-ship")
 except Exception:  # pragma: no cover
     __version__ = "0+unknown"

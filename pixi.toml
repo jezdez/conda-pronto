@@ -1,5 +1,5 @@
 [workspace]
-name = "conda-pronto"
+name = "conda-ship"
 description = "Build ready-to-run conda runtimes"
 channels = ["conda-forge"]
 platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64"]
@@ -14,17 +14,15 @@ sccache = ">=0.10"
 RUSTC_WRAPPER = "sccache"
 
 [tasks]
-prepare = "cargo run -p conda-pronto -- lock"
-check-lock = "cargo run -p conda-pronto -- lock --check"
-bundle = "cargo run -p conda-pronto -- bundle"
-build = "cargo build --release --bin pronto"
-build-debug = "cargo build --bin pronto"
-test = { cmd = "cargo test --release --features runtime-template", depends-on = ["prepare"] }
-test-all = { cmd = "cargo test --release --features runtime-template,online_tests,slow_tests", depends-on = ["prepare"] }
-coverage = { cmd = "cargo llvm-cov --features runtime-template --lcov --output-path lcov.info", depends-on = ["prepare"] }
-coverage-html = { cmd = "cargo llvm-cov --features runtime-template --html", depends-on = ["prepare"] }
+bundle = "cargo run -p conda-ship -- bundle"
+build = "cargo build --release --bin cs"
+build-debug = "cargo build --bin cs"
+test = "cargo test --release --features runtime-template"
+test-all = "cargo test --release --features runtime-template,online_tests"
+coverage = "cargo llvm-cov --features runtime-template --lcov --output-path lcov.info"
+coverage-html = "cargo llvm-cov --features runtime-template --html"
 fmt-check = "cargo fmt --check"
-clippy = { cmd = "cargo clippy --all-targets --features runtime-template -- -D warnings", depends-on = ["prepare"] }
+clippy = "cargo clippy --all-targets --features runtime-template -- -D warnings"
 lint = { depends-on = ["fmt-check", "clippy"] }
 demos = { cmd = """bash -c 'if [ -n "$1" ]; then vhs "demos/$1.tape"; else for tape in demos/*.tape; do [[ "$(basename "$tape")" == _* ]] && continue; vhs "$tape"; done; fi' -- {{ name }}""", args = [{ arg = "name", default = "" }], description = "Record demo GIFs" }
 
@@ -55,7 +53,7 @@ pytest = ">=8.0"
 ruff = ">=0.15"
 
 [feature.test.pypi-dependencies]
-conda-pronto = { path = ".", editable = true }
+conda-ship = { path = ".", editable = true }
 
 [feature.test.tasks]
 pytest = "python -m pytest python/tests"
@@ -67,6 +65,6 @@ docs = ["docs"]
 runtime = { features = ["runtime"], no-default-feature = true }
 test = ["test"]
 
-[tool.pronto]
+[tool.conda-ship]
 source-environment = "runtime"
 exclude = ["conda-libmamba-solver"]

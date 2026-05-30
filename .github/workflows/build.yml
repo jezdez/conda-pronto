@@ -4,29 +4,30 @@ on:
   workflow_call:
     inputs:
       command:
-        description: "Runtime command name to build."
-        required: true
+        description: "Runtime command name to build. Overrides [tool.conda-ship].command when set."
+        required: false
         type: string
+        default: ""
       root:
         description: "Project root containing conda.toml/conda.lock, pixi.toml/pixi.lock, or pyproject.toml/pixi.lock."
         required: false
         type: string
         default: "project"
       layout:
-        description: "Artifact layout to build: online or embedded."
+        description: "Artifact layout to build: online, external, or embedded. Overrides [tool.conda-ship].layout when set."
         required: false
         type: string
-        default: "online"
+        default: ""
       docs-url:
-        description: "Documentation URL embedded in the runtime help output."
+        description: "Documentation URL embedded in the runtime help output. Overrides [tool.conda-ship].docs-url when set."
         required: false
         type: string
-        default: "https://jezdez.github.io/conda-pronto/"
+        default: ""
       scheme:
-        description: "Install scheme stamped into the runtime."
+        description: "Install scheme stamped into the runtime. Overrides [tool.conda-ship].scheme when set."
         required: false
         type: string
-        default: "conda"
+        default: ""
       install-name:
         description: "Name used inside the install scheme."
         required: false
@@ -79,15 +80,15 @@ jobs:
       - name: Checkout action wrapper
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          repository: jezdez/conda-pronto
+          repository: jezdez/conda-ship
           ref: ${{ steps.resolve.outputs.action_ref }}
-          path: .conda-pronto-action
+          path: .conda-ship-action
           fetch-depth: 0
           persist-credentials: false
 
       - name: Build runtime
-        id: pronto
-        uses: ./.conda-pronto-action
+        id: cs
+        uses: ./.conda-ship-action
         with:
           command: ${{ inputs.command }}
           root: ${{ inputs.root }}
@@ -96,14 +97,9 @@ jobs:
           scheme: ${{ inputs.scheme }}
           install-name: ${{ inputs.install-name }}
 
-      - name: Upload binary artifact
+      - name: Upload runtime artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ steps.pronto.outputs.asset-name }}
-          path: |
-            ${{ steps.pronto.outputs.binary-path }}
-            ${{ steps.pronto.outputs.info-path }}
-            ${{ steps.pronto.outputs.lock-path }}
-            ${{ steps.pronto.outputs.package-list-path }}
-            ${{ steps.pronto.outputs.checksums-path }}
+          name: ${{ steps.cs.outputs.asset-name }}
+          path: ${{ steps.cs.outputs.dist-path }}
           retention-days: ${{ inputs.retention-days }}

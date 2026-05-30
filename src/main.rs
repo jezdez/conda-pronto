@@ -50,9 +50,6 @@ async fn async_main() -> miette::Result<()> {
         Some(Command::Bootstrap {
             force,
             scheme,
-            channel,
-            package,
-            no_lock,
             lockfile,
             bundle,
             offline,
@@ -70,27 +67,15 @@ async fn async_main() -> miette::Result<()> {
                     .filter(|v| !v.is_empty())
                     .is_some_and(|v| v != "0" && v.to_lowercase() != "false");
 
-            validate_bootstrap_flags(offline, no_lock, &lockfile, &bundle, &channel, &package)?;
+            validate_bootstrap_flags(&bundle)?;
 
-            let lock_source = if no_lock {
-                LockSource::None
-            } else if let Some(path) = lockfile {
+            let lock_source = if let Some(path) = lockfile {
                 LockSource::File(path)
             } else {
                 LockSource::Embedded
             };
 
-            return bootstrap(
-                &prefix,
-                force,
-                channel,
-                package,
-                lock_source,
-                bundle,
-                offline,
-                verbosity,
-            )
-            .await;
+            return bootstrap(&prefix, force, lock_source, bundle, offline, verbosity).await;
         }
         Some(Command::Status { scheme }) => {
             let prefix = resolve_install_path(scheme, path)?;
@@ -177,12 +162,14 @@ fn resolve_install_path(
 }
 
 fn ensure_stamped_runtime() -> miette::Result<()> {
-    if runtime_data::current().stamped || env::var_os("PRONTO_ALLOW_UNSTAMPED_TEMPLATE").is_some() {
+    if runtime_data::current().stamped
+        || env::var_os("CONDA_SHIP_ALLOW_UNSTAMPED_TEMPLATE").is_some()
+    {
         return Ok(());
     }
 
     Err(miette::miette!(
-        "{} is a runtime template, not a runnable conda runtime. Build a stamped runtime with `pronto build --template {}`.",
+        "{} is a runtime template, not a runnable conda runtime. Build a stamped runtime with `cs build --template {}`.",
         policy::display_name(),
         policy::display_name(),
     ))

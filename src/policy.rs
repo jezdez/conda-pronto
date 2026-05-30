@@ -236,21 +236,21 @@ mod tests {
     fn test_expand_env_vars_supports_posix_and_windows_forms() {
         temp_env::with_vars(
             [
-                ("PRONTO_TEST_HOME", Some("/tmp/pronto-home")),
-                ("PRONTO_TEST_WIN_HOME", Some("C:\\Users\\pronto")),
+                ("CONDA_SHIP_TEST_HOME", Some("/tmp/conda-ship-home")),
+                ("CONDA_SHIP_TEST_WIN_HOME", Some("C:\\Users\\ship")),
             ],
             || {
                 assert_eq!(
-                    expand_env_vars("$PRONTO_TEST_HOME/demo"),
-                    "/tmp/pronto-home/demo"
+                    expand_env_vars("$CONDA_SHIP_TEST_HOME/demo"),
+                    "/tmp/conda-ship-home/demo"
                 );
                 assert_eq!(
-                    expand_env_vars("${PRONTO_TEST_HOME}/demo"),
-                    "/tmp/pronto-home/demo"
+                    expand_env_vars("${CONDA_SHIP_TEST_HOME}/demo"),
+                    "/tmp/conda-ship-home/demo"
                 );
                 assert_eq!(
-                    expand_env_vars("%PRONTO_TEST_WIN_HOME%\\demo"),
-                    "C:\\Users\\pronto\\demo"
+                    expand_env_vars("%CONDA_SHIP_TEST_WIN_HOME%\\demo"),
+                    "C:\\Users\\ship\\demo"
                 );
             },
         );

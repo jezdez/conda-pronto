@@ -1,21 +1,22 @@
 # Roadmap
 
-`pronto` is focused on the generic build system for single-binary conda
+`cs` is focused on the generic build system for single-binary conda
 runtimes.
 
 The builder CLI covers the core local workflow:
 
-- `pronto lock`: derive the runtime lock from the selected conda or Pixi
-  environment
-- `pronto inspect`: summarize the package set for a target platform
-- `pronto bundle`: download package archives into a compressed bundle
-- `pronto build`: stage an `online`, `external`, or `embedded` runtime
-- `pronto run`: build and execute a local runtime for smoke testing
+- `cs inspect`: preflight the selected manifest, lockfile, source
+  environment, exclusions, and package set
+- `cs bundle`: download package archives into a compressed bundle
+- `cs build`: stage an `online`, `external`, or `embedded` runtime
+- `cs run`: build and execute a local runtime for smoke testing
 
 Every staged build writes the runtime plus artifact metadata: the runtime
 lock, a package list, an info JSON file, and SHA256 checksums.
+`cs build --dry-run` and `cs bundle --dry-run` validate planned work
+without writing files.
 
-Generic runtime behavior lives in `pronto`; opinionated package sets and
+Generic runtime behavior lives in `cs`; opinionated package sets and
 distribution defaults belong in downstream projects.
 
 The repository stays focused on producing runtimes. Distribution
@@ -24,25 +25,27 @@ or enterprise package manager recipes live outside the core builder.
 
 ## Manifest And Plugin Work
 
-conda-pronto supports the conda-native pieces needed for downstream distribution
-builds:
+conda-ship supports conda-workspaces project input for downstream
+distribution builds:
 
-- `conda.toml` is the primary manifest.
-- `conda.lock` is the primary source lockfile.
-- `pixi.toml`/`pixi.lock` and Pixi's `pyproject.toml`/`pixi.lock` are supported
+- `conda.toml` is the primary conda-workspaces manifest.
+- `conda.lock` is the matching source lockfile.
+- `pyproject.toml` with `[tool.conda]` is supported through conda-workspaces and
+  uses `conda.lock`.
+- `pixi.toml`/`pixi.lock` and `pyproject.toml` with `[tool.pixi]` are supported
   for downstream projects that use Pixi for the source solve.
-- `[tool.pronto].source-environment` chooses which solved environment becomes the
+- `[tool.conda-ship].source-environment` chooses which solved environment becomes the
   runtime.
-- `[tool.pronto].exclude` records post-solve pruning policy.
+- `[tool.conda-ship].exclude` records post-solve pruning policy.
 - Package and channel intent comes from
   {external+conda-workspaces:doc}`conda workspace sections <reference/conda-toml-spec>`
   when `conda.toml` is available.
-- `conda-pronto` provides a `conda pronto` adapter while preserving
-  `pronto` as the primary CLI.
+- `conda-ship` provides a `conda ship` adapter while preserving
+  `cs` as the primary CLI.
 
 The packaged builder path now uses release-published runtime templates, so
-installed `pronto build` and `conda pronto build` can stamp downstream
-runtimes without a conda-pronto source checkout.
+installed `cs build` and `conda ship build` can stamp downstream
+runtimes without a conda-ship source checkout.
 
 Current follow-up work is mostly distribution hardening:
 
@@ -51,4 +54,4 @@ Current follow-up work is mostly distribution hardening:
 - keep the GitHub Action intentionally lockfile-first, with package and channel
   changes made in committed project manifests rather than action inputs
 - add Windows ARM64 release assets only after the conda package ecosystem has
-  enough stable `win-arm64` coverage for conda-pronto runtimes
+  enough stable `win-arm64` coverage for conda-ship runtimes

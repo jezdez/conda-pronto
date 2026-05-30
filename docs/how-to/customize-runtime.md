@@ -1,16 +1,17 @@
 # Customize A Runtime
 
-Use this guide when you want a conda-pronto-built runtime with your own package
+Use this guide when you want a conda-ship-built runtime with your own package
 set, command name, install location, channels, or documentation URL.
 
-conda-pronto is generic. It does not publish a first-party runtime, and it
+conda-ship is generic. It does not publish a first-party runtime, and it
 does not reserve a default command name. `conda-express` is one downstream
-distribution that uses conda-pronto to publish `cx` and `cxz`; use a command
+distribution that uses conda-ship to publish `cx` and `cxz`; use a command
 owned by your distribution.
 
-The manifest examples below describe the build input conda-pronto consumes.
-Installed CLI builds pass a released runtime template with `--template`.
-Source checkouts can omit that option while changing conda-pronto itself.
+The manifest examples below describe the build input conda-ship consumes.
+Packaged CLI builds find the installed runtime template automatically. Source
+checkouts can omit `--template` while changing conda-ship itself; that
+fallback builds the template locally.
 
 ## Choose A Command Name
 
@@ -28,8 +29,10 @@ underscores. A runtime named `demo` uses `DEMO_BUNDLE` and
 
 Use a product-specific name:
 
-```bash
-pronto build --layout online --command demo
+```toml
+[tool.conda-ship]
+command = "demo"
+layout = "online"
 ```
 
 Avoid publishing downstream builds as `cx` or `cxz`. In the conda ecosystem,
@@ -43,13 +46,15 @@ distribution can choose a different install name without stamping an
 operating-system-specific path:
 
 ```toml
-[tool.pronto]
+[tool.conda-ship]
+command = "cx"
+layout = "online"
 scheme = "conda"
 install-name = "express"
 ```
 
 ```bash
-pronto build --layout online --command cx --scheme conda --install-name express
+cs build
 ```
 
 That builds a runtime command named `cx` whose default install path resolves to
@@ -57,7 +62,7 @@ That builds a runtime command named `cx` whose default install path resolves to
 path locally with the global runtime option, for example
 `COMMAND --path PATH bootstrap` or `COMMAND --path PATH status`.
 
-Choose a product-specific install name. conda-pronto does not reserve names
+Choose a product-specific install name. conda-ship does not reserve names
 under `~/.conda`; it writes runtime metadata into bootstrapped prefixes and
 uses that metadata to avoid overwriting prefixes owned by other tools.
 
@@ -69,7 +74,7 @@ runtime below the platform user data directory, such as
 
 ## Choose Runtime Packages
 
-A conda-pronto runtime must include:
+A conda-ship runtime must include:
 
 - `python`
 - `conda`
@@ -77,7 +82,7 @@ A conda-pronto runtime must include:
 - `conda-spawn`
 
 Additional plugins are a distribution decision. A downstream project records
-its own plugin set in its manifest and committed lockfile; conda-pronto does
+its own plugin set in its manifest and committed lockfile; conda-ship does
 not choose one for every runtime.
 
 ## Configure Local Build Input
@@ -85,7 +90,7 @@ not choose one for every runtime.
 When a project carries `conda.toml` and `conda.lock`, keep package and channel
 intent in the
 {external+conda-workspaces:doc}`conda workspace sections <reference/conda-toml-spec>`
-and put conda-pronto-specific build policy in `[tool.pronto]`:
+and put conda-ship-specific build policy in `[tool.conda-ship]`:
 
 ```toml
 [workspace]
@@ -104,7 +109,9 @@ pandas = "*"
 [environments]
 runtime = { features = ["runtime"], no-default-feature = true }
 
-[tool.pronto]
+[tool.conda-ship]
+command = "demo"
+layout = "online"
 source-environment = "runtime"
 exclude = ["conda-libmamba-solver"]
 docs-url = "https://example.com/demo/"
@@ -113,44 +120,81 @@ install-name = "demo"
 ```
 
 Then refresh the source lockfile with
-{external+conda-workspaces:doc}`conda workspace lock <reference/cli>` and derive
-conda-pronto's runtime lock from the same project:
+{external+conda-workspaces:doc}`conda workspace lock <reference/cli>`. conda-ship
+will derive its runtime lock during `cs build`:
 
 ```bash
 conda workspace lock
-pronto lock
 ```
 
-For Pixi-compatible projects, `pronto configure` rewrites the runtime package
-intent in the selected manifest. With Pixi config in `pyproject.toml`, it writes
-Pixi sections under `[tool.pixi]` and keeps conda-pronto policy under
-`[tool.pronto]`:
+If a Python project keeps conda-workspaces config in `pyproject.toml`, use the
+same tables under `[tool.conda]` and keep `[tool.conda-ship]` as a sibling tool
+table:
 
-```bash
-pronto configure \
-  --package "python >=3.12,<3.15" \
-  --package "conda >=25.1" \
-  --package "conda-rattler-solver" \
-  --package "conda-spawn" \
-  --package "numpy" \
-  --package "pandas" \
-  --channel "conda-forge" \
-  --exclude "conda-libmamba-solver"
+```toml
+[tool.conda.workspace]
+name = "demo"
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64", "win-64"]
+
+[tool.conda.feature.runtime.dependencies]
+python = ">=3.12"
+conda = ">=25.1"
+conda-rattler-solver = "*"
+conda-spawn = ">=0.1.0"
+
+[tool.conda.environments]
+runtime = { features = ["runtime"], no-default-feature = true }
+
+[tool.conda-ship]
+command = "demo"
+layout = "online"
+source-environment = "runtime"
+exclude = ["conda-libmamba-solver"]
 ```
 
-Then refresh the source lockfile and derive conda-pronto's runtime lock. conda-pronto
-consumes the solved `runtime` environment; it does not replace the workspace
-solver.
+This still uses `conda workspace lock` and `conda.lock`.
+
+For Pixi-compatible projects, keep the runtime package intent in Pixi's own
+sections. If Pixi config lives in `pyproject.toml`, the package and channel
+sections live under `[tool.pixi]`, while `[tool.conda-ship]` stays at the Python
+project tool level:
+
+```toml
+[tool.pixi.workspace]
+name = "demo"
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64", "win-64"]
+
+[tool.pixi.feature.runtime.dependencies]
+python = ">=3.12,<3.15"
+conda = ">=25.1"
+conda-rattler-solver = "*"
+conda-spawn = ">=0.1.0"
+numpy = "*"
+pandas = "*"
+
+[tool.pixi.environments]
+runtime = { features = ["runtime"], no-default-feature = true }
+
+[tool.conda-ship]
+command = "demo"
+layout = "online"
+source-environment = "runtime"
+exclude = ["conda-libmamba-solver"]
+```
+
+Then refresh the source lockfile. conda-ship consumes the solved `runtime`
+environment during `cs build`; it does not replace the workspace solver.
 
 ```bash
 pixi lock
-pronto lock
 ```
 
 Build the runtime:
 
 ```bash
-pronto build --layout online --command demo --template ./pronto-runtime-template
+cs build
 ```
 
 The staged runtime and metadata files are written to `dist/`.
@@ -163,15 +207,14 @@ at that project root:
 ```yaml
 - uses: actions/checkout@v4
 
-- uses: jezdez/conda-pronto@v0.1.0
-  id: pronto
+- uses: jezdez/conda-ship@v0.1.0
+  id: cs
   with:
-    command: demo
     root: .
     docs-url: "https://example.com/demo/"
 ```
 
-The action does not run `pronto configure`, `pixi lock`, or any other solve
+The action does not run `conda workspace lock`, `pixi lock`, or any other solve
 step. That keeps release artifacts tied to reviewed project files.
 
 ## Build An Embedded Variant
@@ -180,10 +223,7 @@ Use the `embedded` layout when you want a larger single binary that carries the
 package archives inside itself:
 
 ```bash
-pronto build \
-  --layout embedded \
-  --command demo \
-  --template ./pronto-runtime-template
+cs build --layout embedded
 ```
 
 The embedded runtime uses the `z` suffix, so the staged binary is

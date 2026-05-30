@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import argparse
 
-from conda_pronto.plugin import conda_subcommands
+from conda_ship.plugin import conda_subcommands
 
 
-def test_registers_pronto_subcommand() -> None:
+def test_registers_ship_subcommand() -> None:
     subcommands = list(conda_subcommands())
 
-    assert [subcommand.name for subcommand in subcommands] == ["pronto"]
+    assert [subcommand.name for subcommand in subcommands] == ["ship"]
 
 
 def test_subcommand_has_summary_and_actions() -> None:
@@ -21,9 +21,9 @@ def test_subcommand_has_summary_and_actions() -> None:
 
 def test_subcommand_configures_parser() -> None:
     (subcommand,) = conda_subcommands()
-    parser = argparse.ArgumentParser(prog="conda pronto")
+    parser = argparse.ArgumentParser(prog="conda ship")
 
     subcommand.configure_parser(parser)
 
     args = parser.parse_args(["lock", "--check"])
-    assert args.pronto_args == ["lock", "--check"]
+    assert args.ship_args == ["lock", "--check"]

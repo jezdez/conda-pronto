@@ -1,15 +1,16 @@
 # How Generated Runtimes Work
 
-When you run `pronto build --command demo`, conda-pronto does not invent a new
-program from scratch. It starts with a small generic runtime template, copies it
-to the requested command name, and writes your build data into that copy.
+When you run `cs build`, conda-ship does not invent a new program from scratch.
+It starts with a small generic runtime template, copies it to the resolved
+command name, and writes your build data into that copy. The command name can
+come from `[tool.conda-ship].command` or from `--command`.
 
 Users rarely need to think about the template. They run the
 finished runtime, such as `demo`, `demoz`, `cx`, or `cxz`.
 
-## What `pronto build` Writes
+## What `cs build` Writes
 
-During a runtime build, conda-pronto writes these details into the copied
+During a runtime build, conda-ship writes these details into the copied
 binary:
 
 - command and display name
@@ -25,25 +26,26 @@ with its own command name, package set, help links, and install location.
 
 ## Where The Template Comes From
 
-For packaged builds, the template is downloaded from conda-pronto's GitHub
+For packaged builds, the template is downloaded from conda-ship's GitHub
 Release assets. The asset name includes the platform it runs on, for example:
 
 ```text
-pronto-runtime-template-x86_64-unknown-linux-gnu
-pronto-runtime-template-aarch64-apple-darwin
-pronto-runtime-template-x86_64-pc-windows-msvc.exe
+cs-runtime-template-x86_64-unknown-linux-gnu
+cs-runtime-template-aarch64-apple-darwin
+cs-runtime-template-x86_64-pc-windows-msvc.exe
 ```
 
-You usually only see those names when wiring a local build or packaging job. The
-GitHub Action downloads the matching template automatically. An installed
-`pronto` CLI can use one explicitly with `--template PATH`.
+You usually only see those names when wiring a packaging job. The GitHub Action
+downloads the matching template automatically. A packaged `cs` CLI looks for
+an installed `cs-runtime-template` automatically; `--template PATH` is an
+override for custom packaging or cross-builds.
 
 The template is not a runtime. Running it directly fails with a message that
-points back to `pronto build`; only the stamped copy has a command name,
+points back to `cs build`; only the stamped copy has a command name,
 lockfile, package metadata, and install policy.
 
-When developing conda-pronto itself from a source checkout, `--template` is
-optional. In that mode, `pronto build` compiles the local generic runtime before
+When developing conda-ship itself from a source checkout, `--template` is
+optional. In that mode, `cs build` compiles the local generic runtime before
 writing the runtime.
 
 ## What Users See
@@ -71,4 +73,4 @@ Some runtime behavior is visible to users:
 - uninstall that removes the install path and prints a runtime-removal hint
 
 The package set, command name, documentation URL, and release channel belong to
-the project using conda-pronto.
+the project using conda-ship.

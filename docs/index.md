@@ -1,26 +1,26 @@
-# conda-pronto
+# conda-ship
 
 Build ready-to-run conda runtimes.
 
-`conda-pronto` is a generic builder for single-binary conda runtimes. It
-installs the `pronto` CLI, but it does not ship a first-party distribution.
+`conda-ship` is a generic builder for single-binary conda runtimes. It
+installs the `cs` CLI, but it does not ship a first-party distribution.
 Downstream projects choose the command name, package set, channels,
 documentation URL, and release channel.
 
-`conda-express` is one downstream distribution: it uses conda-pronto to build the
-official `cx` and `cxz` runtimes. conda-pronto owns the reusable builder;
+`conda-express` is one downstream distribution: it uses conda-ship to build the
+official `cx` and `cxz` runtimes. conda-ship owns the reusable builder;
 conda-express owns the product defaults and release channels for `cx`.
 
 ## Start Here
 
-If you are new to conda-pronto, build the tutorial runtime first. From a
-conda-pronto source checkout, this gives you a working mental model for locks,
+If you are new to conda-ship, build the tutorial runtime first. It starts from
+a small conda workspace and gives you a working mental model for locks,
 artifacts, and the generated runtime:
 
 ```bash
-pronto lock
-pronto build --layout online --command demo
-pronto run --command demo -- --path /tmp/demo bootstrap
+conda create -n cs-demo -c conda-forge conda-ship conda-workspaces
+conda activate cs-demo
+cs --version
 ```
 
 Then use the documentation by the kind of help you need.
@@ -55,7 +55,7 @@ Find exact commands, options, artifact names, and configuration keys.
 :link: explanation/concepts
 :link-type: doc
 
-Read the builder/runtime model and where conda-pronto fits in the conda ecosystem.
+Read the builder/runtime model and where conda-ship fits in the conda ecosystem.
 :::
 
 ::::
@@ -65,7 +65,7 @@ Read the builder/runtime model and where conda-pronto fits in the conda ecosyste
 ::::{grid} 1 1 2 2
 :gutter: 3
 
-:::{grid-item-card} conda-pronto
+:::{grid-item-card} conda-ship
 :link: explanation/project-boundaries
 :link-type: doc
 
@@ -75,7 +75,7 @@ Read what the builder owns and what downstream distributions own.
 :::{grid-item-card} conda-express
 :link: https://jezdez.github.io/conda-express/
 
-See a concrete downstream distribution built with conda-pronto.
+See a concrete downstream distribution built with conda-ship.
 :::
 
 ::::

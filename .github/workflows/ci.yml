@@ -77,18 +77,18 @@ jobs:
         run: pixi run test
 
       - name: Build runtime template
-        run: pixi run -- cargo build --locked --release --bin pronto-runtime --features runtime-template
+        run: pixi run -- cargo build --locked --release --bin conda-ship-runtime --features runtime-template
 
       - name: Build smoke runtime
         shell: bash
         run: |
-          pronto="./target/release/pronto"
-          template="./target/release/pronto-runtime"
+          cs="./target/release/cs"
+          template="./target/release/conda-ship-runtime"
           if [[ "$TARGET" == *"windows"* ]]; then
-            pronto="${pronto}.exe"
+            cs="${cs}.exe"
             template="${template}.exe"
           fi
-          "$pronto" build \
+          "$cs" build \
             --layout online \
             --command demo \
             --target "$TARGET" \
@@ -109,12 +109,12 @@ jobs:
       - name: Build embedded bundle
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
-          ./target/release/pronto build \
+          ./target/release/cs build \
             --layout embedded \
             --command demo \
             --target "$TARGET" \
             --target-label "$TARGET" \
-            --template ./target/release/pronto-runtime
+            --template ./target/release/conda-ship-runtime
 
       - name: Smoke test embedded bundle
         if: matrix.target == 'x86_64-unknown-linux-gnu'

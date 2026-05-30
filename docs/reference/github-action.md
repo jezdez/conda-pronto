@@ -3,42 +3,47 @@
 The repository root provides a composite GitHub Action for downstream
 distribution repositories.
 
-The action downloads the tagged conda-pronto release assets for the current
+The action downloads the tagged conda-ship release assets for the current
 runner, verifies their GitHub artifact attestations and `SHA256SUMS`, and runs
-the downloaded `pronto` binary to build a runtime. It does not build
-conda-pronto from source.
+the downloaded `cs` binary to preflight and build a runtime. The preflight
+uses `cs build --dry-run`, then the action runs the real build. It does not
+build conda-ship from source.
 Self-hosted runners must provide the GitHub CLI because attestation
 verification uses `gh attestation verify`.
 
 The action builds only from committed project input. The selected root must
-contain `conda.toml` plus `conda.lock`, `pixi.toml` plus `pixi.lock`, or Pixi's
-`pyproject.toml` plus `pixi.lock`. When the manifest or matching lockfile is
+contain `conda.toml` plus `conda.lock`, `pyproject.toml` with `[tool.conda]`
+plus `conda.lock`, `pixi.toml` plus `pixi.lock`, or `pyproject.toml` with
+`[tool.pixi]` plus `pixi.lock`. When the manifest or matching lockfile is
 missing, the action fails instead of generating or solving project configuration
-in CI.
+in CI. This minimal example assumes the manifest contains
+`[tool.conda-ship].command`.
 
 ```yaml
 - uses: actions/checkout@v4
 
-- uses: jezdez/conda-pronto@v0.1.0
-  id: pronto
-  with:
-    command: demo
+- uses: jezdez/conda-ship@v0.1.0
+  id: cs
 ```
 
 ## Inputs
 
 `command`
-: Required command name for the generated runtime. For example,
-  conda-express passes `cx`; the `embedded` layout stages `cxz`.
+: Runtime command name override. Set this when the manifest does not contain
+  `[tool.conda-ship].command` or when a release job intentionally overrides it.
+  For example, conda-express uses `cx`; the `embedded` layout stages `cxz`.
 
 `root`
 : Project root containing `conda.toml`/`conda.lock`, `pixi.toml`/`pixi.lock`,
-  or `pyproject.toml`/`pixi.lock`. Defaults to the workflow workspace.
+  or `pyproject.toml` with either `[tool.conda]`/`conda.lock` or
+  `[tool.pixi]`/`pixi.lock`. Defaults to the workflow workspace.
 
 `layout`
-: Artifact layout to build. Supported values are `online` and `embedded`.
-  Defaults to `online`. Embedded artifacts carry package archives inside the
-  runtime and use the `z` suffix.
+: Artifact layout to build. Supported values are `online`, `external`, and
+  `embedded`. Overrides `[tool.conda-ship].layout` when set; otherwise the
+  action leaves layout selection to the manifest and `cs` defaults to `online`.
+  External artifacts stage the runtime and bundle as separate files. Embedded
+  artifacts carry package archives inside the runtime and use the `z` suffix.
 
 `docs-url`
 : Documentation URL stamped into the generated runtime help output.
@@ -47,12 +52,19 @@ in CI.
 : Install scheme stamped into the generated runtime. Supported values are
   `conda`, which installs below `~/.conda/INSTALL_NAME`, and `data`, which
   installs below the platform user data directory. When `scheme` is not set,
-  the action passes `conda`.
+  the action leaves scheme selection to `[tool.conda-ship]` and the runtime
+  default.
 
 `install-name`
-: Name used inside the install scheme. Defaults to `command`.
+: Name used inside the install scheme. When omitted, `cs` uses
+  `[tool.conda-ship].install-name` or the resolved command name.
 
 ## Outputs
+
+`dist-path`
+: Absolute path to the directory containing all generated runtime artifacts.
+  Use this for artifact uploads when the complete build output should be
+  published together.
 
 `binary-path`
 : Absolute path to the generated runtime.
@@ -71,3 +83,7 @@ in CI.
 
 `checksums-path`
 : Absolute path to the SHA256 checksum file.
+
+`bundle-path`
+: Absolute path to the external bundle when `layout: external`; empty for
+  `online` and `embedded`.

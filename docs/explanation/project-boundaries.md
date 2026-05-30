@@ -1,6 +1,6 @@
 # Project Boundaries
 
-conda-pronto builds ready-to-run conda runtimes. It is not itself a conda
+conda-ship builds ready-to-run conda runtimes. It is not itself a conda
 distribution.
 
 The split from conda-express puts the generic pieces here and leaves
@@ -11,7 +11,7 @@ distribution policy in downstream projects.
 ::::{grid} 1 1 2 2
 :gutter: 3
 
-:::{grid-item-card} conda-pronto
+:::{grid-item-card} conda-ship
 
 Generic builder, runtime behavior, artifact layouts, bundle handling, and
 metadata files.
@@ -25,9 +25,9 @@ documentation.
 
 ::::
 
-## What conda-pronto Owns
+## What conda-ship Owns
 
-conda-pronto owns the reusable build and runtime machinery:
+conda-ship owns the reusable build and runtime machinery:
 
 - deriving a runtime lock from a conda or Pixi source lockfile
 - pruning excluded packages and exclusive dependencies after the solve
@@ -53,12 +53,12 @@ Downstream projects decide what their users get:
 - default release channels
 - documentation URLs
 - Homebrew formulae
-- PyPI and crates.io wrapper packages
+- Python or conda integration packages
 - Docker images
 - GitHub Release policy
 - constructor-based installers or enterprise package manager recipes
 
-conda-pronto produces the runtimes and metadata those channels can distribute. It
+conda-ship produces the runtimes and metadata those channels can distribute. It
 does not decide whether every runtime includes the same conda plugins or uses
 the same name.
 
@@ -68,33 +68,33 @@ the same name.
 distribution that publishes `cx` and `cxz`.
 
 It owns the opinionated native conda package set, the `cx`/`cxz` command names,
-Homebrew and shell-script installation, Docker images, PyPI and crates.io
+Homebrew and shell-script installation, Docker images, Python or conda
 distribution wrappers, and release policy for those artifacts.
 
-When conda-express needs runtimes, its workflows call conda-pronto from the
+When conda-express needs runtimes, its workflows call conda-ship from the
 conda-express project root and pass the `cx` command name. The `embedded`
 layout stages `cxz`. The package set remains conda-express project input;
-conda-pronto does not hard-code those choices. Its own scope page is
+conda-ship does not hard-code those choices. Its own scope page is
 {external+conda-express:doc}`Project scope <scope>`.
 
 ## Relationship To Other Tools
 
-conda-pronto complements other conda ecosystem tools:
+conda-ship complements other conda ecosystem tools:
 
 | Tool | Role |
 | --- | --- |
-| {external+conda-workspaces:doc}`conda-workspaces <index>` | Defines conda-native workspace manifests and lockfiles that conda-pronto can consume |
-| Pixi | Solves and records compatible runtime environments that conda-pronto can consume |
+| {external+conda-workspaces:doc}`conda-workspaces <index>` | Defines workspace manifests and lockfiles that conda-ship can consume |
+| Pixi | Solves and records compatible runtime environments that conda-ship can consume |
 | rattler-build | Builds conda packages |
 | constructor | Builds OS installers |
-| conda-pronto | Builds runtimes that can be distributed directly or wrapped by other channels |
-| {external+conda-express:doc}`conda-express <index>` | A conda-pronto-based downstream distribution for `cx` and `cxz` |
+| conda-ship | Builds runtimes that can be distributed directly or wrapped by other channels |
+| {external+conda-express:doc}`conda-express <index>` | A conda-ship-based downstream distribution for `cx` and `cxz` |
 
-conda-pronto does not produce installer-generator output such as `.sh`, `.pkg`, or
-`.msi`. Those formats can wrap conda-pronto-built runtimes when a downstream
+conda-ship does not produce installer-generator output such as `.sh`, `.pkg`, or
+`.msi`. Those formats can wrap conda-ship-built runtimes when a downstream
 distribution needs them.
 
 The {external+conda-express:doc}`conda-express docs <index>` are useful as a
 concrete example of a downstream distribution. They describe `cx` and `cxz` as
-products; conda-pronto docs describe how to build and reason about products
+products; conda-ship docs describe how to build and reason about products
 like them.
