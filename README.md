@@ -1,20 +1,20 @@
 # conda-pronto
 
-Build ready-to-run conda bootstrap binaries.
+Build ready-to-run conda runtimes.
 
-`conda-pronto` is a generic builder and runtime for single-binary conda
-distributions. It installs the `pronto` CLI.
+`conda-pronto` is a generic builder for single-binary conda runtimes. It
+installs the `pronto` CLI.
 
 `conda-express` is a downstream distribution that uses conda-pronto to publish the
-official `cx` and `cxz` binaries. conda-pronto owns the generic builder/runtime; a
-downstream distribution owns its package set, binary names, release channels,
+official `cx` and `cxz` runtimes. conda-pronto owns the generic builder; a
+downstream distribution owns its package set, command names, release channels,
 and installer wrappers.
 
 Artifact layouts:
 
-- `online`: `<name>` with stamped lock/metadata; packages are downloaded during bootstrap.
-- `external`: `<name>` plus `<name>.bundle.tar.zst`.
-- `embedded`: `<name>z`, the runtime plus compressed bundle embedded in one binary.
+- `online`: runtime `<command>` with stamped lock/metadata; packages are downloaded during bootstrap.
+- `external`: runtime `<command>` plus `<command>.bundle.tar.zst`.
+- `embedded`: runtime `<command>z` with the compressed bundle embedded in one binary.
 
 The CLI builds from a solved downstream project. Installed builds should pass a
 released runtime template; source checkouts can omit `--template` while
@@ -23,18 +23,18 @@ developing conda-pronto itself:
 ```bash
 pronto lock
 pronto inspect
-pronto build --layout online --name demo --template ./pronto-runtime-template
-pronto build --layout embedded --name demo --template ./pronto-runtime-template
-pronto run --name demo -- bootstrap --prefix /tmp/demo-smoke
+pronto build --layout online --command demo --template ./pronto-runtime-template
+pronto build --layout embedded --command demo --template ./pronto-runtime-template
+pronto run --command demo -- --path /tmp/demo-smoke bootstrap
 ```
 
-Every `pronto build` writes the staged binary plus artifact metadata: the
+Every `pronto build` writes the runtime binary plus artifact metadata: the
 runtime lock, a tab-separated package list, an info JSON document, and SHA256
-checksums. The staged binary is stamped with the runtime lock, distribution
+checksums. The runtime is stamped with the runtime lock, distribution
 metadata, and optional embedded bundle before checksums are written. The GitHub
 Action downloads tagged `pronto` and runtime-template release assets, verifies
-their GitHub attestations and `SHA256SUMS`, and then uses the same stamping
-path against a committed downstream manifest and lockfile.
+their GitHub attestations and `SHA256SUMS`, and then uses the same stamping path
+against a committed downstream manifest and lockfile.
 
 Most users run the builder as `pronto`. The Python package can also make
 `conda pronto` available inside a conda environment; that command is a shortcut
@@ -50,6 +50,6 @@ conda-pronto project metadata. `pixi.toml` plus `pixi.lock` and Pixi's
 workflows.
 
 `pronto` is not an OS installer generator and does not target `.sh`, `.pkg`, or
-`.msi` output. It produces bootstrap binaries that can be distributed directly
+`.msi` output. It produces runtimes that can be distributed directly
 or wrapped by Homebrew, constructor, Docker, enterprise packaging systems, and
 other release tooling.

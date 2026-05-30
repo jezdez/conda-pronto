@@ -1,9 +1,9 @@
 # Builder CLI Reference
 
-The `pronto` CLI builds and stages named conda bootstrap runtimes.
+The `pronto` CLI builds and stages conda runtimes.
 
 This page covers the builder CLI. For the command surface exposed by generated
-runtime binaries, see {doc}`runtime-cli`.
+runtimes, see {doc}`runtime-cli`.
 
 The `conda-pronto` package can also make `conda pronto` available as a
 conda-style shortcut for this CLI. See {doc}`conda-plugin`.
@@ -57,22 +57,24 @@ Options:
 
 ## `pronto build`
 
-Build and stage a named runtime artifact.
+Build and stage a runtime artifact.
 
 ```bash
-pronto build --name NAME [--layout LAYOUT] [--target-label LABEL] \
+pronto build --command COMMAND [--layout LAYOUT] [--target-label LABEL] \
   [--platform PLATFORM] [--target TRIPLE] [--template PATH] \
-  [--docs-url URL] [--out-dir PATH] [--root PATH]
+  [--docs-url URL] [--scheme SCHEME] [--install-name NAME] \
+  [--out-dir PATH] [--root PATH]
 ```
 
-`NAME`, `LABEL`, and `TRIPLE` are used in artifact filenames. They must start
-with an ASCII letter or digit and may only contain ASCII letters, digits, `.`,
-`_`, and `-`.
+`COMMAND`, `LABEL`, and `TRIPLE` are used in artifact filenames. They must
+start with an ASCII letter or digit and may only contain ASCII letters, digits,
+`.`, `_`, and `-`. `COMMAND` names the generated runtime; it is not a conda
+environment name.
 
 Options:
 
-- `--name NAME`: required distribution binary name.
-- `--layout online`: stage a network bootstrap binary.
+- `--command COMMAND`: required command name for the generated runtime.
+- `--layout online`: stage a runtime that downloads packages during bootstrap.
 - `--layout external`: stage a runtime plus compressed bundle.
 - `--layout embedded`: stage a runtime with the compressed bundle embedded.
 - `--target-label LABEL`: append a platform or target label to artifact names.
@@ -83,16 +85,22 @@ Options:
 - `--template PATH`: prebuilt generic runtime template binary to copy and
   stamp. When omitted, `pronto build` compiles `pronto-runtime` from `--root`.
 - `--docs-url URL`: documentation URL stamped into runtime help output.
+- `--scheme SCHEME`: install scheme stamped into the runtime. Currently
+  supported: `conda`, which installs below `~/.conda/INSTALL_NAME`, and
+  `data`, which installs below the platform user data directory.
+- `--install-name NAME`: name used inside the install scheme. Defaults to
+  `COMMAND`.
 - `--out-dir PATH`: write staged artifacts somewhere other than `dist/`.
 - `--root PATH`: use a project root instead of auto-detecting one.
 
 ## `pronto run`
 
-Build a named runtime and execute it immediately.
+Build a runtime artifact and execute it immediately.
 
 ```bash
-pronto run --name NAME [--layout LAYOUT] [--platform PLATFORM] \
-  [--template PATH] [--docs-url URL] [--out-dir PATH] [--root PATH] \
+pronto run --command COMMAND [--layout LAYOUT] [--platform PLATFORM] \
+  [--template PATH] [--docs-url URL] [--scheme SCHEME] [--install-name NAME] \
+  [--out-dir PATH] [--root PATH] \
   -- RUNTIME_ARGS...
 ```
 
@@ -100,14 +108,18 @@ Everything after `--` is passed to the staged runtime.
 
 Options:
 
-- `--name NAME`: required distribution binary name.
-- `--layout online`: stage a network bootstrap binary.
+- `--command COMMAND`: required command name for the generated runtime.
+- `--layout online`: stage a runtime that downloads packages during bootstrap.
 - `--layout external`: stage a runtime plus compressed bundle.
 - `--layout embedded`: stage a runtime with the compressed bundle embedded.
 - `--platform PLATFORM`: choose the conda platform for metadata and bundles.
 - `--template PATH`: prebuilt generic runtime template binary to copy and
   stamp. When omitted, `pronto run` compiles `pronto-runtime` from `--root`.
 - `--docs-url URL`: documentation URL stamped into runtime help output.
+- `--scheme SCHEME`: install scheme stamped into the runtime. Currently
+  supported: `conda` and `data`.
+- `--install-name NAME`: name used inside the install scheme. Defaults to
+  `COMMAND`.
 - `--out-dir PATH`: write staged artifacts somewhere other than `dist/`.
 - `--root PATH`: use a project root instead of auto-detecting one.
 - `RUNTIME_ARGS`: arguments passed to the staged runtime after it is built.

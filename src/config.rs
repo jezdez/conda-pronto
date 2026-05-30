@@ -9,31 +9,13 @@ use crate::{policy, runtime_data};
 
 pub use crate::runtime_data::RuntimeConfig;
 
-/// The repository `pixi.toml` embedded as the default development
-/// configuration for an unstamped `pronto-runtime` binary.
-const EMBEDDED_PIXI_TOML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/pixi.toml"));
-
-// Runtime configuration.
-
-#[derive(serde::Deserialize)]
-struct PixiToml {
-    tool: ToolSection,
-}
-
-#[derive(serde::Deserialize)]
-struct ToolSection {
-    pronto: RuntimeConfig,
-}
-
 static EMBEDDED_RUNTIME_CONFIG: LazyLock<RuntimeConfig> = LazyLock::new(|| {
     let stamped = &runtime_data::current().header.runtime_config;
     if !stamped.is_empty() {
         return stamped.clone();
     }
 
-    let pixi: PixiToml =
-        toml::from_str(EMBEDDED_PIXI_TOML).expect("invalid [tool.pronto] in pixi.toml");
-    pixi.tool.pronto
+    RuntimeConfig::default()
 });
 
 /// Return the runtime package metadata embedded at build time.
@@ -159,8 +141,14 @@ mod tests {
     #[test]
     fn test_embedded_config_parses() {
         let config = embedded_config();
-        assert!(!config.channels.is_empty(), "channels should be non-empty");
-        assert!(!config.packages.is_empty(), "packages should be non-empty");
+        assert!(
+            config.channels.is_empty(),
+            "unstamped templates should not carry channel defaults"
+        );
+        assert!(
+            config.packages.is_empty(),
+            "unstamped templates should not carry package defaults"
+        );
     }
 
     #[test]

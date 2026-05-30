@@ -14,7 +14,7 @@ def test_registers_pronto_subcommand() -> None:
 def test_subcommand_has_summary_and_actions() -> None:
     (subcommand,) = conda_subcommands()
 
-    assert "bootstrap binaries" in subcommand.summary
+    assert "conda runtimes" in subcommand.summary
     assert callable(subcommand.action)
     assert callable(subcommand.configure_parser)
 

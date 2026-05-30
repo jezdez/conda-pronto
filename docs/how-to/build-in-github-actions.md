@@ -1,17 +1,17 @@
 # Build In GitHub Actions
 
-Use the composite action when a downstream distribution repository wants conda-pronto
-to build release artifacts in CI.
+Use the composite action when a downstream distribution repository wants
+conda-pronto to build release artifacts in CI.
 
-The action is the public CI interface for conda-pronto-built binaries. Downstream
-repositories, including conda-express, keep their package set in a committed
-manifest and lockfile. The action reads that project input and stamps a named
-runtime artifact instead of carrying a copy of the generic builder.
+The action is the public CI interface for conda-pronto-built runtimes.
+Downstream repositories, including conda-express, keep their package set in a
+committed manifest and lockfile. The action reads that project input and stamps
+a runtime instead of carrying a copy of the generic builder.
 
 Pin the action to a conda-pronto release tag. The action downloads the matching
 `pronto` and `pronto-runtime-template` release assets, verifies their GitHub
 artifact attestations and release `SHA256SUMS`, and stamps the generated
-runtime artifact.
+runtime.
 
 GitHub-hosted runners already include the GitHub CLI used for attestation
 verification. Self-hosted runners must provide `gh`.
@@ -31,7 +31,7 @@ jobs:
       - uses: jezdez/conda-pronto@v0.1.0
         id: pronto
         with:
-          name: demo
+          command: demo
 
       - uses: actions/upload-artifact@v4
         with:
@@ -58,12 +58,17 @@ steps:
   - uses: jezdez/conda-pronto@v0.1.0
     id: pronto
     with:
-      name: demo
+      command: demo
       root: dist/demo
 ```
 
 The action does not run a solve, generate a manifest, or refresh a lockfile.
 Update and commit the lockfile before running release builds.
+
+Use `scheme` for a named install policy and `install-name` for the name inside
+that scheme. When neither is set, the action uses `scheme: conda` and the
+runtime command name as the install name. A command named `demo` therefore
+installs below `~/.conda/demo`.
 
 ## Embedded Bundle Example
 
@@ -74,16 +79,17 @@ access:
 - uses: jezdez/conda-pronto@v0.1.0
   id: pronto
   with:
-    name: demo
+    command: demo
     layout: embedded
 ```
 
-The output binary uses the `z` suffix, for example `demoz` on Unix or
+The output runtime uses the `z` suffix, for example `demoz` on Unix or
 `demoz.exe` on Windows.
 
 ## Matrix Builds
 
-Run the action across operating systems to produce platform-specific binaries:
+Run the action across operating systems to produce platform-specific
+runtimes:
 
 ```yaml
 strategy:
@@ -99,7 +105,7 @@ steps:
   - uses: jezdez/conda-pronto@v0.1.0
     id: pronto
     with:
-      name: demo
+      command: demo
 ```
 
 Each job emits an asset name qualified with the runner target triple.
@@ -107,6 +113,6 @@ Each job emits an asset name qualified with the runner target triple.
 ## Downstream Release Preparation
 
 Use the action output paths as the source of truth for release uploads and
-package-manager wrappers. A downstream repository can upload the binary,
+package-manager wrappers. A downstream repository can upload the runtime,
 `.info.json`, `.runtime.lock`, `.packages.txt`, and `.sha256` files together so
 users and packagers can audit exactly what was built.

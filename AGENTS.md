@@ -3,7 +3,7 @@
 ## Project structure
 
 - `conda-pronto` is the generic build system for producing ready-to-run conda
-  bootstrap binaries. It installs the `pronto` CLI.
+  runtimes. It installs the `pronto` CLI.
 
 - The Cargo workspace has one package, `conda-pronto`, with two binaries:
   `pronto` for the builder CLI and `pronto-runtime` as the generic bootstrap

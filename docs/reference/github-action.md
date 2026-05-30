@@ -5,7 +5,8 @@ distribution repositories.
 
 The action downloads the tagged conda-pronto release assets for the current
 runner, verifies their GitHub artifact attestations and `SHA256SUMS`, and runs
-the downloaded `pronto` binary. It does not build conda-pronto from source.
+the downloaded `pronto` binary to build a runtime. It does not build
+conda-pronto from source.
 Self-hosted runners must provide the GitHub CLI because attestation
 verification uses `gh attestation verify`.
 
@@ -21,13 +22,14 @@ in CI.
 - uses: jezdez/conda-pronto@v0.1.0
   id: pronto
   with:
-    name: demo
+    command: demo
 ```
 
 ## Inputs
 
-`name`
-: Required distribution binary name. For example, conda-express passes `cx`.
+`command`
+: Required command name for the generated runtime. For example,
+  conda-express passes `cx`; the `embedded` layout stages `cxz`.
 
 `root`
 : Project root containing `conda.toml`/`conda.lock`, `pixi.toml`/`pixi.lock`,
@@ -36,15 +38,24 @@ in CI.
 `layout`
 : Artifact layout to build. Supported values are `online` and `embedded`.
   Defaults to `online`. Embedded artifacts carry package archives inside the
-  runtime binary and use the `z` suffix.
+  runtime and use the `z` suffix.
 
 `docs-url`
 : Documentation URL stamped into the generated runtime help output.
 
+`scheme`
+: Install scheme stamped into the generated runtime. Supported values are
+  `conda`, which installs below `~/.conda/INSTALL_NAME`, and `data`, which
+  installs below the platform user data directory. When `scheme` is not set,
+  the action passes `conda`.
+
+`install-name`
+: Name used inside the install scheme. Defaults to `command`.
+
 ## Outputs
 
 `binary-path`
-: Absolute path to the generated runtime binary.
+: Absolute path to the generated runtime.
 
 `asset-name`
 : Platform-qualified asset filename.

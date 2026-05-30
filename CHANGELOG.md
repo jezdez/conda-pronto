@@ -5,16 +5,24 @@ User-facing release notes for `conda-pronto` are documented here.
 ## 0.1.0 - 2026-05-29
 
 Initial release of `conda-pronto`, a generic builder for ready-to-run conda
-bootstrap binaries. The Rust crate is published as `conda-pronto` and installs
+runtimes. The Rust crate is published as `conda-pronto` and installs
 the `pronto` CLI. The Python package provides the optional `conda pronto`
 subcommand for conda installations that want plugin-style integration.
 
 ### Highlights
 
-- `pronto`, a CLI for producing named downstream conda bootstrap binaries from
-  committed project metadata and lockfiles.
-- Downstream projects choose their own binary name, package set, channels,
+- `pronto`, a CLI for producing downstream conda runtime artifacts
+  from committed project metadata and lockfiles.
+- Downstream projects choose their own command name, package set, channels,
   documentation URL, and release channel.
+- Downstream projects can configure the generated runtime's install location
+  with an install scheme and install name.
+- Built-in install schemes are `conda` for `~/.conda/INSTALL_NAME` and `data`
+  for the platform user data directory.
+- Runtime metadata protects bootstrapped prefixes from accidental overwrite or
+  removal by the wrong generated runtime.
+- Generated runtimes also accept a global `--path` option for local override
+  workflows where the default install location is not appropriate.
 - `pronto-runtime-template`, the generic runtime template used for generated
   downstream binaries.
 - Support for `conda.toml` with `conda.lock`, `pixi.toml` with `pixi.lock`, and
@@ -25,7 +33,9 @@ subcommand for conda installations that want plugin-style integration.
   pre-downloaded conda package archives.
 - Package exclusion after lockfile resolution, so downstream distributions can
   trim packages from a solved environment before building a runtime.
-- Generated runtime `.condarc` files use the channels stamped into the runtime.
+- Package and channel intent comes from the selected manifest environment and
+  lockfile; `[tool.pronto]` is reserved for conda-pronto build policy.
+- Generated runtime `.condarc` files use the channels stamped into the runtime lock.
 - Runtime `--channel` and `--package` flags are available for live solves with
   `--no-lock`; lockfile-based builds use the committed lockfile contents.
 - Default builds use Rustls with the `ring` provider so release builds do not
@@ -41,6 +51,8 @@ subcommand for conda installations that want plugin-style integration.
   `.packages.txt`, `.info.json`, and `.sha256` files.
 - Release assets for tagged builds: `pronto`, `pronto-runtime-template`, and
   `SHA256SUMS`.
+- Runtime template assets refuse to run directly; `pronto build` must stamp a
+  copy before it becomes a downstream runtime.
 - Crates.io and PyPI packaging metadata for publishing `conda-pronto`.
 
 ### Security

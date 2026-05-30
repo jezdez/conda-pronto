@@ -1,10 +1,11 @@
 # Runtime CLI Reference
 
-Every conda-pronto artifact is a named runtime binary. In this page, `NAME` stands for
-the distribution name passed to `pronto build --name NAME`.
+Every conda-pronto artifact includes a generated runtime. In this page,
+`COMMAND` stands for the command name passed to `pronto build --command
+COMMAND`.
 
-For conda-express, `NAME` is `cx`. For an embedded conda-express artifact, the
-staged binary is `cxz`.
+For conda-express, `COMMAND` is `cx`. For an embedded conda-express artifact,
+the staged runtime is `cxz`.
 
 ## Global Options
 
@@ -14,27 +15,36 @@ staged binary is `cxz`.
 `-q, --quiet`
 : Suppress non-essential output.
 
+`--path PATH`
+: Use a custom install path instead of the distribution default. This applies to
+  `bootstrap`, `status`, `shell`, `uninstall`, and pass-through conda commands.
+  Put it before pass-through commands so conda does not interpret it as one of
+  its own options, for example `COMMAND --path /tmp/demo install numpy`.
+
 `-h, --help`
 : Show runtime help.
 
 `-V, --version`
 : Show the runtime version.
 
-## `NAME bootstrap`
+## `COMMAND bootstrap`
 
-Install conda into the runtime's managed prefix.
+Install conda into the runtime's install path.
 
 ```bash
-NAME bootstrap [OPTIONS]
+COMMAND bootstrap [OPTIONS]
 ```
 
 Options:
 
 `--force`
-: Remove an existing managed prefix before bootstrapping again.
+: Remove an existing install path before bootstrapping again.
 
-`--prefix DIR`
-: Install into a custom prefix instead of the distribution default, `~/.NAME`.
+`--scheme SCHEME`
+: Install with a named scheme instead of the stamped default. Currently
+  supported: `conda`, which installs below `~/.conda/INSTALL_NAME`, and
+  `data`, which installs below the platform user data directory. This is
+  mutually exclusive with the global `--path` option.
 
 `-c, --channel CH`
 : Add a channel for a live solve. Can be passed multiple times. Use with
@@ -64,87 +74,89 @@ Examples:
 
 ```bash
 # Standard network bootstrap from the stamped lockfile
-NAME bootstrap
+COMMAND bootstrap
 
-# Re-bootstrap into the default prefix
-NAME bootstrap --force
+# Re-bootstrap into the default install path
+COMMAND bootstrap --force
 
-# Bootstrap into a custom prefix
-NAME bootstrap --prefix /opt/name
+# Bootstrap into a custom install path
+COMMAND --path /opt/name bootstrap
 
 # Live solve with extra packages
-NAME bootstrap --no-lock --package conda-build --package rattler-build
+COMMAND bootstrap --no-lock --package conda-build --package rattler-build
 
 # Bootstrap from an external bundle directory
-NAME bootstrap --bundle ./packages --offline
+COMMAND bootstrap --bundle ./packages --offline
 ```
 
-For an embedded artifact, conda-pronto detects the built-in bundle automatically:
+For an embedded runtime, conda-pronto detects the built-in bundle
+automatically:
 
 ```bash
-NAMEz bootstrap
+COMMANDz bootstrap
 ```
 
 An explicit `--bundle` still takes priority over the embedded bundle.
 
-## `NAME status`
+## `COMMAND status`
 
-Show runtime and prefix details.
+Show runtime and install details.
 
 ```bash
-NAME status [--prefix DIR]
+COMMAND [--path PATH] status [--scheme SCHEME]
 ```
 
-The output includes the binary name, runtime version, prefix, configured
+The output includes the command name, runtime version, install path, configured
 channels, configured package specs, installed package count, and conda
 executable path.
 
-## `NAME shell`
+## `COMMAND shell`
 
 Start a conda-spawn subshell for an environment.
 
 ```bash
-NAME shell [ENV]
+COMMAND shell [ENV]
 ```
 
 Examples:
 
 ```bash
-NAME shell myenv
+COMMAND shell myenv
 exit
 ```
 
-This command delegates to `conda spawn`. It uses the runtime's default managed
-prefix.
+This command delegates to `conda spawn`. It uses the runtime's default install
+path.
 
-## `NAME uninstall`
+## `COMMAND uninstall`
 
-Remove the managed prefix and named environments.
+Remove the install path and named environments.
 
 ```bash
-NAME uninstall [OPTIONS]
+COMMAND uninstall [OPTIONS]
 ```
 
 Options:
 
-`--prefix DIR`
-: Remove a custom managed prefix instead of the distribution default,
-  `~/.NAME`.
+`--scheme SCHEME`
+: Remove the install path for a named scheme instead of the stamped default.
+  Currently supported: `conda` and `data`. This is mutually exclusive with the
+  global `--path` option.
 
 `-y, --yes`
 : Skip the interactive confirmation prompt.
 
-The command removes the prefix, attempts to remove named environments cleanly,
-cleans PATH entries from common shell profiles, and prints a hint for removing
-the runtime binary through the package manager or install method that provided
-it.
+The command removes the install path, attempts to remove named environments
+cleanly, cleans PATH entries from common shell profiles, and prints a hint for
+removing the runtime through the package manager or install method that
+provided it.
 
-## `NAME help`
+## `COMMAND help`
 
 Show the runtime help text.
 
 ```bash
-NAME help
+COMMAND help
 ```
 
 ## Pass-Through Commands
@@ -153,14 +165,17 @@ Any command not listed above is passed through to the installed conda
 executable after bootstrap:
 
 ```bash
-NAME create -n myenv python=3.12 numpy
-NAME install -n myenv pandas
-NAME list -n myenv
-NAME env list
-NAME info
+COMMAND create -n myenv python=3.12 numpy
+COMMAND install -n myenv pandas
+COMMAND list -n myenv
+COMMAND env list
+COMMAND info
+
+# Use a custom runtime install path for pass-through commands
+COMMAND --path /tmp/name install -n myenv pandas
 ```
 
-If the managed prefix does not exist, pass-through commands automatically
+If the install path does not exist, pass-through commands automatically
 bootstrap first.
 
 ## Disabled Shell Commands
@@ -168,8 +183,8 @@ bootstrap first.
 Generated runtimes use conda-spawn for activation. These commands are
 intercepted with runtime-specific guidance instead of being passed through:
 
-- `NAME activate`
-- `NAME deactivate`
-- `NAME init`
+- `COMMAND activate`
+- `COMMAND deactivate`
+- `COMMAND init`
 
-Use `NAME shell ENV` instead of `conda activate ENV`.
+Use `COMMAND shell ENV` instead of `conda activate ENV`.

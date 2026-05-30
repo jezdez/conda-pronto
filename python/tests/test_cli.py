@@ -16,17 +16,17 @@ def test_configure_parser_collects_pronto_args() -> None:
     parser = argparse.ArgumentParser(prog="conda pronto")
     configure_parser(parser)
 
-    args = parser.parse_args(["build", "--layout", "none", "--name", "serpe"])
+    args = parser.parse_args(["build", "--layout", "online", "--command", "demo"])
 
-    assert args.pronto_args == ["build", "--layout", "none", "--name", "serpe"]
+    assert args.pronto_args == ["build", "--layout", "online", "--command", "demo"]
 
 
 @pytest.mark.parametrize(
     ("argv", "expected"),
     [
         pytest.param(
-            ["build", "--name", "serpe"],
-            ["/tmp/pronto", "build", "--name", "serpe"],
+            ["build", "--command", "demo"],
+            ["/tmp/pronto", "build", "--command", "demo"],
             id="args",
         ),
         pytest.param(["--"], ["/tmp/pronto", "--help"], id="separator-defaults-to-help"),

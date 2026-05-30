@@ -25,7 +25,7 @@ def conda_subcommands() -> Iterable[CondaSubcommand]:
 
     yield CondaSubcommand(
         name="pronto",
-        summary="Build ready-to-run conda bootstrap binaries.",
+        summary="Build ready-to-run conda runtimes.",
         action=execute,
         configure_parser=configure_parser,
     )

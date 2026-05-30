@@ -32,13 +32,42 @@ impl RuntimeConfig {
     }
 }
 
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    clap::ValueEnum,
+    serde::Serialize,
+    serde::Deserialize,
+    PartialEq,
+    Eq,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum InstallScheme {
+    #[default]
+    Conda,
+    Data,
+}
+
+impl InstallScheme {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Conda => "conda",
+            Self::Data => "data",
+        }
+    }
+}
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct RuntimeDataHeader {
     pub schema_version: u32,
     pub command_name: String,
     pub embedded_command_name: String,
     pub display_name: String,
-    pub default_prefix_dir: String,
+    #[serde(default)]
+    pub install_scheme: InstallScheme,
+    pub install_name: String,
     pub metadata_file: String,
     pub bundle_env_var: String,
     pub offline_env_var: String,
@@ -58,7 +87,8 @@ impl RuntimeDataHeader {
             command_name: name.to_string(),
             embedded_command_name: format!("{name}z"),
             display_name: name.to_string(),
-            default_prefix_dir: format!(".{name}"),
+            install_scheme: InstallScheme::Conda,
+            install_name: name.to_string(),
             metadata_file: format!(".{name}.json"),
             bundle_env_var: runtime_env_var(name, "BUNDLE"),
             offline_env_var: runtime_env_var(name, "OFFLINE"),
@@ -109,6 +139,7 @@ impl EmbeddedBundle {
 pub struct RuntimeData {
     pub header: RuntimeDataHeader,
     pub bundle: Option<EmbeddedBundle>,
+    pub stamped: bool,
 }
 
 static CURRENT_RUNTIME_DATA: LazyLock<RuntimeData> = LazyLock::new(|| match from_current_exe() {
@@ -235,7 +266,11 @@ pub fn read_from_path(path: &Path) -> io::Result<Option<RuntimeData>> {
         sha256: decoded.bundle_sha256,
     });
 
-    Ok(Some(RuntimeData { header, bundle }))
+    Ok(Some(RuntimeData {
+        header,
+        bundle,
+        stamped: true,
+    }))
 }
 
 struct DecodedFooter {
@@ -351,9 +386,11 @@ mod tests {
         let data = read_from_path(tmp.path()).unwrap().unwrap();
 
         assert_eq!(data.header.command_name, "snek");
-        assert_eq!(data.header.default_prefix_dir, ".snek");
+        assert_eq!(data.header.install_scheme, InstallScheme::Conda);
+        assert_eq!(data.header.install_name, "snek");
         assert_eq!(data.header.runtime_lock, "lock data");
         assert!(data.bundle.is_none());
+        assert!(data.stamped);
     }
 
     #[test]

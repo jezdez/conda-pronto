@@ -39,119 +39,151 @@ fn main() -> miette::Result<()> {
 async fn async_main() -> miette::Result<()> {
     init_tracing()?;
 
-    let raw_args: Vec<String> = env::args().collect();
-    let first_arg = raw_args.get(1).map(|s| s.as_str());
+    ensure_stamped_runtime()?;
 
-    match first_arg {
-        Some("activate") | Some("deactivate") => {
-            print_disabled_shell_command(first_arg.unwrap());
+    let cli = Cli::parse_runtime();
+    let verbosity = cli.verbosity();
+    let path = cli.path.as_ref();
+
+    match cli.command {
+        Some(Command::Bootstrap {
+            force,
+            scheme,
+            channel,
+            package,
+            no_lock,
+            lockfile,
+            bundle,
+            offline,
+        }) => {
+            let prefix = resolve_install_path(scheme, path)?;
+            let bundle = bundle.or_else(|| {
+                env::var(policy::bundle_env_var())
+                    .ok()
+                    .filter(|v| !v.is_empty())
+                    .map(std::path::PathBuf::from)
+            });
+            let offline = offline
+                || env::var(policy::offline_env_var())
+                    .ok()
+                    .filter(|v| !v.is_empty())
+                    .is_some_and(|v| v != "0" && v.to_lowercase() != "false");
+
+            validate_bootstrap_flags(offline, no_lock, &lockfile, &bundle, &channel, &package)?;
+
+            let lock_source = if no_lock {
+                LockSource::None
+            } else if let Some(path) = lockfile {
+                LockSource::File(path)
+            } else {
+                LockSource::Embedded
+            };
+
+            return bootstrap(
+                &prefix,
+                force,
+                channel,
+                package,
+                lock_source,
+                bundle,
+                offline,
+                verbosity,
+            )
+            .await;
         }
-        Some("init") => {
-            print_disabled_init();
+        Some(Command::Status { scheme }) => {
+            let prefix = resolve_install_path(scheme, path)?;
+            return status(&prefix);
         }
-        Some("bootstrap") | Some("status") | Some("shell") | Some("uninstall") | Some("help")
-        | Some("--help") | Some("-h") | Some("--version") | Some("-V") | None => {
-            let cli = Cli::parse_runtime();
-            let verbosity = cli.verbosity();
-            match cli.command {
-                Some(Command::Bootstrap {
-                    force,
-                    prefix,
-                    channel,
-                    package,
-                    no_lock,
-                    lockfile,
-                    bundle,
-                    offline,
-                }) => {
-                    let prefix = prefix.map(Ok).unwrap_or_else(policy::default_prefix)?;
-                    let bundle = bundle.or_else(|| {
-                        env::var(policy::bundle_env_var())
-                            .ok()
-                            .filter(|v| !v.is_empty())
-                            .map(std::path::PathBuf::from)
-                    });
-                    let offline = offline
-                        || env::var(policy::offline_env_var())
-                            .ok()
-                            .filter(|v| !v.is_empty())
-                            .is_some_and(|v| v != "0" && v.to_lowercase() != "false");
-
-                    validate_bootstrap_flags(
-                        offline, no_lock, &lockfile, &bundle, &channel, &package,
-                    )?;
-
-                    let lock_source = if no_lock {
-                        LockSource::None
-                    } else if let Some(path) = lockfile {
-                        LockSource::File(path)
-                    } else {
-                        LockSource::Embedded
-                    };
-
-                    return bootstrap(
-                        &prefix,
-                        force,
-                        channel,
-                        package,
-                        lock_source,
-                        bundle,
-                        offline,
-                        verbosity,
-                    )
-                    .await;
-                }
-                Some(Command::Status { prefix }) => {
-                    let prefix = prefix.map(Ok).unwrap_or_else(policy::default_prefix)?;
-                    return status(&prefix);
-                }
-                Some(Command::Uninstall { prefix, yes }) => {
-                    let prefix = prefix.map(Ok).unwrap_or_else(policy::default_prefix)?;
-                    return uninstall(&prefix, yes, verbosity);
-                }
-                Some(Command::Shell { env }) => {
-                    let prefix = policy::default_prefix()?;
-                    ensure_bootstrapped(&prefix).await?;
-                    let mut conda_args = vec!["spawn"];
-                    if let Some(ref name) = env {
-                        conda_args.push(name);
-                    }
-                    let extra: Vec<&str> = raw_args[2..]
-                        .iter()
-                        .skip(env.is_some() as usize)
-                        .map(|s| s.as_str())
-                        .collect();
-                    conda_args.extend(extra);
-                    return exec::replace_process_with_conda(&prefix, &conda_args);
-                }
-                Some(Command::Help) => {
-                    Cli::parse_runtime_from([policy::command_name(), "--help"]);
-                }
-                None => {
-                    let prefix = policy::default_prefix()?;
-                    if !is_bootstrapped(&prefix) {
-                        eprintln!(
-                            "{} No conda installation found. Run `{} bootstrap` first.",
-                            console::style("!").yellow().bold(),
-                            policy::command_name()
-                        );
-                        std::process::exit(1);
-                    }
-                    return exec::replace_process_with_conda(&prefix, &["--help"]);
-                }
-            }
+        Some(Command::Uninstall { scheme, yes }) => {
+            let prefix = resolve_install_path(scheme, path)?;
+            return uninstall(&prefix, yes, verbosity);
         }
-        Some(_) => {
-            let prefix = policy::default_prefix()?;
+        Some(Command::Shell { env, args }) => {
+            let prefix = resolve_install_path(None, path)?;
             ensure_bootstrapped(&prefix).await?;
-            let conda_args: Vec<&str> = raw_args[1..].iter().map(|s| s.as_str()).collect();
-            if exec::should_filter_conda_output(&conda_args) {
-                return exec::run_conda_filtered(&prefix, &conda_args);
+            let mut conda_args = vec!["spawn".to_string()];
+            if let Some(ref name) = env {
+                conda_args.push(name.clone());
             }
-            return exec::replace_process_with_conda(&prefix, &conda_args);
+            let extra: Vec<String> = args
+                .iter()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect();
+            conda_args.extend(extra);
+            let conda_arg_refs: Vec<&str> = conda_args.iter().map(String::as_str).collect();
+            return exec::replace_process_with_conda(&prefix, &conda_arg_refs);
+        }
+        Some(Command::Help) => {
+            Cli::parse_runtime_from([policy::command_name(), "--help"]);
+        }
+        Some(Command::Passthrough(args)) => {
+            let prefix = resolve_install_path(None, path)?;
+            let conda_args: Vec<String> = args
+                .iter()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect();
+            let first_arg = conda_args.first().map(String::as_str);
+            match first_arg {
+                Some("activate") | Some("deactivate") => {
+                    print_disabled_shell_command(first_arg.unwrap());
+                }
+                Some("init") => {
+                    print_disabled_init();
+                }
+                _ => {}
+            }
+            ensure_bootstrapped(&prefix).await?;
+            let conda_arg_refs: Vec<&str> = conda_args.iter().map(String::as_str).collect();
+            if exec::should_filter_conda_output(&conda_arg_refs) {
+                return exec::run_conda_filtered(&prefix, &conda_arg_refs);
+            }
+            return exec::replace_process_with_conda(&prefix, &conda_arg_refs);
+        }
+        None => {
+            let prefix = resolve_install_path(None, path)?;
+            if !is_bootstrapped(&prefix) {
+                eprintln!(
+                    "{} No conda installation found. Run `{} bootstrap` first.",
+                    console::style("!").yellow().bold(),
+                    policy::command_name()
+                );
+                std::process::exit(1);
+            }
+            return exec::replace_process_with_conda(&prefix, &["--help"]);
         }
     }
     Ok(())
+}
+
+fn resolve_install_path(
+    scheme: Option<runtime_data::InstallScheme>,
+    path: Option<&std::path::PathBuf>,
+) -> miette::Result<std::path::PathBuf> {
+    if let Some(path) = path {
+        if scheme.is_some() {
+            return Err(miette::miette!(
+                "--scheme and --path are mutually exclusive install location options"
+            ));
+        }
+        policy::expand_install_path(path)
+    } else if let Some(scheme) = scheme {
+        policy::install_path_for_scheme(scheme, policy::install_name())
+    } else {
+        policy::default_install_path()
+    }
+}
+
+fn ensure_stamped_runtime() -> miette::Result<()> {
+    if runtime_data::current().stamped || env::var_os("PRONTO_ALLOW_UNSTAMPED_TEMPLATE").is_some() {
+        return Ok(());
+    }
+
+    Err(miette::miette!(
+        "{} is a runtime template, not a runnable conda runtime. Build a stamped runtime with `pronto build --template {}`.",
+        policy::display_name(),
+        policy::display_name(),
+    ))
 }
 
 fn init_tracing() -> miette::Result<()> {

@@ -4,7 +4,7 @@ Offline artifacts let the generated runtime install from package archives that
 were downloaded during the build.
 
 Use them when a downstream distribution needs air-gapped installs, native
-installer integration, or a single self-contained bootstrap binary.
+installer integration, or a single self-contained runtime.
 
 ## Choose A Layout
 
@@ -18,19 +18,19 @@ place supporting files next to the binary.
 ```bash
 pronto build \
   --layout external \
-  --name demo \
+  --command demo \
   --template ./pronto-runtime-template
 ```
 :::
 
 :::{tab-item} Embedded
-Use `embedded` when you want one larger binary that can bootstrap without a
+Use `embedded` when you want one larger runtime that can bootstrap without a
 separate bundle file.
 
 ```bash
 pronto build \
   --layout embedded \
-  --name demo \
+  --command demo \
   --template ./pronto-runtime-template
 ```
 :::
@@ -53,19 +53,19 @@ Point the runtime at an extracted bundle directory:
 ```bash
 mkdir -p /opt/demo-bundle
 tar -I zstd -xf demo.bundle.tar.zst -C /opt/demo-bundle
-demo bootstrap --prefix /opt/demo --bundle /opt/demo-bundle --offline
+demo --path /opt/demo bootstrap --bundle /opt/demo-bundle --offline
 ```
 
-conda-pronto also stamps a distribution-specific bundle environment variable into the
-runtime. For a distribution named `demo`, that variable is
+conda-pronto also stamps a command-specific bundle environment variable into the
+runtime. For a command named `demo`, that variable is
 `DEMO_BUNDLE`.
 
 ## Bootstrap From An Embedded Bundle
 
-An embedded artifact carries the bundle inside the binary:
+An embedded runtime carries the bundle inside the binary:
 
 ```bash
-demoz bootstrap --prefix /opt/demo
+demoz --path /opt/demo bootstrap
 ```
 
 The runtime extracts the compressed package archives to a temporary directory

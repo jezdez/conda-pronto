@@ -3,8 +3,8 @@ name: Build custom conda runtime
 on:
   workflow_call:
     inputs:
-      name:
-        description: "Distribution binary name to build."
+      command:
+        description: "Runtime command name to build."
         required: true
         type: string
       root:
@@ -22,6 +22,16 @@ on:
         required: false
         type: string
         default: "https://jezdez.github.io/conda-pronto/"
+      scheme:
+        description: "Install scheme stamped into the runtime."
+        required: false
+        type: string
+        default: "conda"
+      install-name:
+        description: "Name used inside the install scheme."
+        required: false
+        type: string
+        default: ""
       retention-days:
         description: "Number of days to retain build artifacts."
         required: false
@@ -79,10 +89,12 @@ jobs:
         id: pronto
         uses: ./.conda-pronto-action
         with:
-          name: ${{ inputs.name }}
+          command: ${{ inputs.command }}
           root: ${{ inputs.root }}
           layout: ${{ inputs.layout }}
           docs-url: ${{ inputs.docs-url }}
+          scheme: ${{ inputs.scheme }}
+          install-name: ${{ inputs.install-name }}
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

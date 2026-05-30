@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "conda-pronto"
 version = "0.1.0"
-description = "Conda plugin entry point for the conda-pronto bootstrap binary builder."
+description = "Conda plugin entry point for the conda-pronto runtime builder."
 requires-python = ">=3.10"
 readme = "README.md"
 license = "BSD-3-Clause"

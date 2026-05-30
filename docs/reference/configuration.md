@@ -12,9 +12,9 @@ conda-pronto treats the values as build input; it does not define a universal
 conda distribution.
 
 `pronto lock`, `pronto inspect`, `pronto build`, and `pronto run` can read either
-manifest/lockfile pair. Installed builds pass `--template` so conda-pronto
-can stamp a prebuilt generic runtime without needing the conda-pronto source
-checkout.
+manifest/lockfile pair. Installed builds pass `--template` so conda-pronto can
+stamp a prebuilt generic runtime template without needing the conda-pronto
+source checkout.
 
 ## Manifest Discovery
 
@@ -22,7 +22,7 @@ conda-pronto looks in the build root for:
 
 1. `conda.toml`
 2. `pixi.toml`
-3. `pyproject.toml` when it contains `[tool.pixi]` or `[tool.pronto]`
+3. `pyproject.toml` when it contains `[tool.pixi]`
 
 The selected manifest determines the lockfile:
 
@@ -36,10 +36,10 @@ The selected manifest determines the lockfile:
 workspace tools. `target/pronto/runtime.lock` is generated build output owned
 by conda-pronto.
 
-## Runtime Environment
+## Source Environment
 
-The selected environment determines the conda packages available to the
-generated bootstrap runtime. In `conda.toml` or `pixi.toml`, this is commonly a
+The selected source environment determines the conda packages available to the
+generated runtime. In `conda.toml` or `pixi.toml`, this is commonly a
 dedicated `runtime` environment:
 
 ```toml
@@ -62,12 +62,14 @@ In Pixi's `pyproject.toml` layout, the same Pixi sections live below
 
 ```toml
 [tool.pronto]
-environment = "runtime"
+source-environment = "runtime"
 exclude = ["conda-libmamba-solver"]
 docs-url = "https://example.com/demo/"
+scheme = "conda"
+install-name = "demo"
 ```
 
-`environment`
+`source-environment`
 : Name of the solved environment to turn into the runtime lock. When omitted,
   conda-pronto first tries `runtime`, then falls back to the default environment.
 
@@ -79,51 +81,46 @@ docs-url = "https://example.com/demo/"
 : Documentation URL stamped into generated runtime help output. The GitHub
   Action also exposes this as the `docs-url` input.
 
-The older compatibility metadata fields are still accepted:
+`scheme`
+: Install scheme stamped into the generated runtime. Supported values are
+  `conda`, which installs below `~/.conda/INSTALL_NAME`, and `data`, which
+  installs below the platform user data directory. `conda` is the default when
+  `scheme` is not configured.
 
-```toml
-[tool.pronto]
-channels = ["conda-forge"]
-packages = [
-  "python >=3.12",
-  "conda >=25.1",
-  "conda-rattler-solver",
-  "conda-spawn >=0.1.0",
-]
-```
+`install-name`
+: Name used inside the install scheme. When omitted, conda-pronto uses the
+  generated runtime command name. For example, `command = cx` can use
+  `install-name = "express"` so the `conda` scheme resolves to
+  `~/.conda/express`.
+  Choose a product-specific install name. conda-pronto does not reserve names
+  under `~/.conda`; it relies on runtime metadata to avoid overwriting prefixes
+  owned by other tools.
 
-`packages`
-: Specs shown in runtime metadata and used for live solves with `--no-lock`.
-  Prefer
-  {external+conda-workspaces:doc}`conda workspace dependency sections <reference/conda-toml-spec>`
-  for `conda.toml` projects.
-
-`channels`
-: Channels written into runtime metadata and the installed `.condarc` when the
-  lockfile environment does not provide channels. Prefer `[workspace].channels`
-  for `conda.toml` and `pixi.toml` projects, or `[tool.pixi.workspace].channels`
-  for Pixi `pyproject.toml` projects.
+Package and channel intent belongs in the selected source environment, not in
+`[tool.pronto]`. conda-pronto records the resolved package names and channel
+URLs from the source lockfile environment into generated runtime metadata.
 
 ## Stamped Runtime Metadata
 
-`pronto build --name NAME` stamps these runtime values onto the staged binary:
+`pronto build --command COMMAND` stamps these values onto the runtime:
 
-- command name: `NAME` for `online` and `external`, `NAME` plus `z` for
+- command name: `COMMAND` for `online` and `external`, `COMMAND` plus `z` for
   `embedded`
-- display name: `NAME`
-- default prefix: `~/.NAME`
-- metadata file: `.NAME.json`
-- bundle environment variable: uppercased `NAME` plus `_BUNDLE`
-- offline environment variable: uppercased `NAME` plus `_OFFLINE`
+- display name: `COMMAND`
+- install scheme: `conda`, or the configured `scheme`
+- install name: `COMMAND`, or the configured `install-name`
+- metadata file: `.COMMAND.json`
+- bundle environment variable: uppercased `COMMAND` plus `_BUNDLE`
+- offline environment variable: uppercased `COMMAND` plus `_OFFLINE`
 
 Non-alphanumeric characters in environment variable names become underscores.
 
 ## Downstream Defaults
 
-conda-pronto's repository default package set exists so the builder and runtime can be
-tested. A downstream distribution makes its own package choices and passes them
-through `pronto configure` or direct manifest edits before committing the
-matching lockfile.
+conda-pronto's repository default package set exists so the builder and
+runtime behavior can be tested. A downstream distribution makes its own
+package choices and passes them through `pronto configure` or direct manifest
+edits before committing the matching lockfile.
 
 For example, conda-express owns the package set used when building `cx` and
 `cxz`; those package choices are conda-express policy, not conda-pronto policy.

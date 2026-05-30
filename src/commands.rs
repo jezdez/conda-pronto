@@ -16,8 +16,36 @@ pub(crate) fn is_bootstrapped(prefix: &Path) -> bool {
     prefix.join("conda-meta").is_dir()
 }
 
+fn is_managed_prefix(prefix: &Path) -> bool {
+    prefix.join(policy::metadata_file()).is_file()
+}
+
+fn is_empty_dir(prefix: &Path) -> miette::Result<bool> {
+    if !prefix.is_dir() {
+        return Ok(false);
+    }
+    Ok(std::fs::read_dir(prefix)
+        .into_diagnostic()?
+        .next()
+        .is_none())
+}
+
+fn reject_unmanaged_prefix(prefix: &Path, action: &str) -> miette::Result<()> {
+    if is_managed_prefix(prefix) {
+        return Ok(());
+    }
+
+    Err(miette::miette!(
+        "refusing to {action} unmanaged install path: {}\n  Expected runtime metadata file: {}",
+        prefix.display(),
+        prefix.join(policy::metadata_file()).display()
+    ))
+}
+
 pub(crate) async fn ensure_bootstrapped(prefix: &Path) -> miette::Result<()> {
-    if !is_bootstrapped(prefix) {
+    if is_bootstrapped(prefix) {
+        reject_unmanaged_prefix(prefix, "use")?;
+    } else {
         eprintln!(
             "{} No conda installation found. Bootstrapping now...",
             console::style(">>").cyan().bold()
@@ -85,12 +113,12 @@ pub(crate) fn validate_bootstrap_flags(
             "--channel and --package only affect live solves; pass --no-lock or update the project lockfile"
         ));
     }
-    if let Some(dir) = bundle
-        && !dir.is_dir()
+    if let Some(path) = bundle
+        && !path.is_dir()
     {
         return Err(miette::miette!(
             "--bundle path is not a directory: {}",
-            dir.display()
+            path.display()
         ));
     }
     Ok(())
@@ -107,20 +135,33 @@ pub(crate) async fn bootstrap(
     offline: bool,
     verbosity: Verbosity,
 ) -> miette::Result<()> {
-    if is_bootstrapped(prefix) && !force {
-        eprintln!(
-            "{} conda is already bootstrapped at {}",
-            console::style("✔").green(),
-            prefix.display()
-        );
-        eprintln!("  Use --force to re-bootstrap.");
-        return Ok(());
+    if prefix.exists() {
+        if is_bootstrapped(prefix) {
+            if !force {
+                reject_unmanaged_prefix(prefix, "use")?;
+                eprintln!(
+                    "{} conda is already installed at {}",
+                    console::style("✔").green(),
+                    prefix.display()
+                );
+                eprintln!("  Use --force to re-bootstrap.");
+                return Ok(());
+            }
+        } else if !is_empty_dir(prefix)? {
+            return Err(miette::miette!(
+                "refusing to bootstrap into existing non-empty path: {}",
+                prefix.display()
+            ));
+        }
     }
 
     if force && prefix.exists() {
         reject_dangerous_prefix(prefix)?;
+        if !is_empty_dir(prefix)? {
+            reject_unmanaged_prefix(prefix, "remove")?;
+        }
         eprintln!(
-            "{} Removing existing prefix at {}",
+            "{} Removing existing install path at {}",
             console::style(">>").cyan().bold(),
             prefix.display()
         );
@@ -216,7 +257,7 @@ pub(crate) async fn bootstrap(
             "\n{} conda bootstrapped successfully!",
             console::style("✔").green().bold()
         );
-        eprintln!("   Prefix: {}", prefix.display());
+        eprintln!("   Install path: {}", prefix.display());
         eprintln!("   Run `{} status` for details.", policy::command_name());
         eprintln!(
             "   Use `{} <conda-args>` to run conda commands.",
@@ -259,18 +300,19 @@ pub(crate) fn status(prefix: &Path) -> miette::Result<()> {
         eprintln!("No conda installation found at {}", prefix.display());
         return Ok(());
     }
+    reject_unmanaged_prefix(prefix, "inspect")?;
 
     let meta = read_metadata(prefix)?;
 
     let bundle_len = crate::config::embedded_bundle_len();
     let binary_name = policy::status_binary_name(bundle_len.is_some());
     println!("{} {}", binary_name, env!("CARGO_PKG_VERSION"));
-    println!("  prefix:   {}", prefix.display());
-    println!("  channels: {}", meta.channels.join(", "));
-    println!("  packages: {}", meta.packages.join(", "));
+    println!("  path:      {}", prefix.display());
+    println!("  channels:  {}", meta.channels.join(", "));
+    println!("  packages:  {}", meta.packages.join(", "));
     if let Some(bundle_len) = bundle_len {
         println!(
-            "  bundle:   embedded ({:.1} MB)",
+            "  bundle:    embedded ({:.1} MB)",
             bundle_len as f64 / 1_048_576.0
         );
     }
@@ -280,7 +322,7 @@ pub(crate) fn status(prefix: &Path) -> miette::Result<()> {
 
     let conda_bin = exec::conda_binary(prefix);
     println!(
-        "  conda:    {}",
+        "  conda:     {}",
         if conda_bin.exists() {
             conda_bin.display().to_string()
         } else {
@@ -301,6 +343,7 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
         eprintln!("  Nothing to uninstall.");
         return Ok(());
     }
+    reject_unmanaged_prefix(prefix, "uninstall")?;
 
     let envs_dir = prefix.join("envs");
     let named_envs: Vec<String> = if envs_dir.is_dir() {
@@ -325,7 +368,7 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
         "{} This will permanently remove:",
         console::style("!").yellow().bold()
     );
-    eprintln!("   Conda prefix: {}", prefix.display());
+    eprintln!("   Install path: {}", prefix.display());
     if !named_envs.is_empty() {
         eprintln!(
             "   Named environments ({}): {}",
@@ -382,7 +425,7 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
                 }
                 Ok(out) => {
                     eprintln!(
-                        "{} conda exited with {} for {} (will force-remove with prefix)",
+                        "{} conda exited with {} for {} (will force-remove it)",
                         console::style("!").yellow().bold(),
                         out.status,
                         env_name
@@ -390,7 +433,7 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
                 }
                 Err(e) => {
                     eprintln!(
-                        "{} Failed to run conda for {}: {} (will force-remove with prefix)",
+                        "{} Failed to run conda for {}: {} (will force-remove it)",
                         console::style("!").yellow().bold(),
                         env_name,
                         e
@@ -404,14 +447,14 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
 
     if verbosity != Verbosity::Quiet {
         eprintln!(
-            "\n{} Removing conda prefix at {}",
+            "\n{} Removing install path at {}",
             console::style(">>").cyan().bold(),
             prefix.display()
         );
     }
     std::fs::remove_dir_all(prefix)
         .into_diagnostic()
-        .context("failed to remove conda prefix")?;
+        .context("failed to remove install path")?;
 
     if let Some(ref bin) = runtime_binary {
         let hint = match crate::config::install_method() {
@@ -443,10 +486,10 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
 
 fn remove_shell_path_entries(prefix: &Path) {
     let condabin_path = format!("export PATH=\"{}/condabin:$PATH\"", prefix.display());
-    let install_dir = env::current_exe()
+    let install_path = env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.to_path_buf()));
-    let install_path = install_dir
+    let install_path = install_path
         .as_ref()
         .map(|d| format!("export PATH=\"{}:$PATH\"", d.display()));
 
@@ -543,8 +586,8 @@ pub(crate) fn print_disabled_init() {
     eprintln!(
         "    {}",
         console::style(format!(
-            "export PATH=\"$HOME/{}/condabin:$PATH\"",
-            policy::default_prefix_dir()
+            "export PATH=\"{}/condabin:$PATH\"",
+            policy::install_path_for_posix_shell()
         ))
         .green()
     );
@@ -580,12 +623,12 @@ mod tests {
     }
 
     #[test]
-    fn test_default_prefix_uses_policy_default() {
-        let prefix = policy::default_prefix().unwrap();
+    fn test_default_install_path_uses_policy_default() {
+        let prefix = policy::default_install_path().unwrap();
         assert_eq!(
             prefix.file_name().unwrap().to_str().unwrap(),
-            policy::default_prefix_dir(),
-            "default prefix should use policy default"
+            policy::display_name(),
+            "default install path should use policy default"
         );
         assert!(
             prefix.parent().is_some(),
@@ -658,7 +701,7 @@ mod tests {
     }
 
     #[test]
-    fn test_clean_path_entries_removes_install_dir() {
+    fn test_clean_path_entries_removes_install_path() {
         let tmp = TempDir::new().unwrap();
         let install_line = "export PATH=\"/usr/local/bin:$PATH\"";
         let zshrc = tmp.path().join(".zshrc");
@@ -677,7 +720,7 @@ mod tests {
         let result = std::fs::read_to_string(&zshrc).unwrap();
         assert!(
             !result.contains("/usr/local/bin"),
-            "install dir line should be removed"
+            "install path line should be removed"
         );
         assert!(
             result.contains("EDITOR=vim"),
@@ -723,7 +766,7 @@ mod tests {
         #[case] expected_err_contains: &str,
     ) {
         let bundle = if bad_bundle_path {
-            Some(std::path::PathBuf::from("/nonexistent/bundle/dir"))
+            Some(std::path::PathBuf::from("/nonexistent/bundle/path"))
         } else {
             None
         };
@@ -744,7 +787,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let bundle = Some(tmp.path().to_path_buf());
         let result = validate_bootstrap_flags(false, false, &None, &bundle, &None, &None);
-        assert!(result.is_ok(), "valid bundle dir should pass validation");
+        assert!(result.is_ok(), "valid bundle path should pass validation");
     }
 
     #[test]

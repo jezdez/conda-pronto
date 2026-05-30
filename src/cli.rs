@@ -1,10 +1,12 @@
 //! Command-line interface definitions.
 
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use clap::{CommandFactory, FromArgMatches, Parser};
 
 use crate::policy;
+use crate::runtime_data::InstallScheme;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verbosity {
@@ -27,6 +29,10 @@ pub struct Cli {
     /// Suppress non-essential output
     #[clap(long, short, global = true, conflicts_with = "verbose")]
     pub quiet: bool,
+
+    /// Runtime install path to use instead of the stamped default
+    #[clap(long, global = true, value_name = "PATH")]
+    pub path: Option<PathBuf>,
 
     #[clap(subcommand)]
     pub command: Option<Command>,
@@ -59,9 +65,9 @@ impl Cli {
     fn runtime_command() -> clap::Command {
         Self::command()
             .name(policy::command_name())
-            .about("Single-binary conda bootstrap runtime")
+            .about("Single-binary conda runtime")
             .long_about(
-                "This runtime bootstraps a conda prefix from a stamped lockfile.\n\n\
+                "This runtime installs a conda environment from a stamped lockfile.\n\n\
                 After bootstrap, commands are passed through to the installed conda executable.",
             )
             .after_help(runtime_after_help())
@@ -72,33 +78,33 @@ fn runtime_after_help() -> String {
     let name = policy::command_name();
     format!(
         "\x1b[1;4mQuick start:\x1b[0m\n\n  \
-        {name} bootstrap                           Install conda into ~/{prefix}\n  \
+        {name} bootstrap                           Install conda into {path}\n  \
         {name} create -n myenv python=3.12 numpy   Create an environment\n  \
         {name} shell myenv                         Activate (spawns a subshell)\n  \
         exit                                   Leave the environment\n\n\
         \x1b[1;4mManagement:\x1b[0m\n\n  \
         {name} status                              Show installation details\n  \
-        {name} uninstall                           Remove conda prefix and all environments\n\n\
+        {name} uninstall                           Remove the install path and environments\n\n\
         \x1b[1;4mPass-through:\x1b[0m\n\n  \
         Any command not listed above is passed through to conda:\n  \
         {name} install, {name} remove, {name} list, {name} env, {name} info, {name} config, ...\n\n\
         \x1b[4mDocs:\x1b[0m {docs_url}",
-        prefix = policy::default_prefix_dir(),
+        path = policy::install_path_for_display(),
         docs_url = policy::docs_url(),
     )
 }
 
 #[derive(Debug, clap::Subcommand)]
 pub enum Command {
-    /// Bootstrap a fresh conda installation into the prefix
+    /// Bootstrap a fresh conda installation into the install path
     Bootstrap {
-        /// Force re-bootstrap even if the prefix already exists
+        /// Force re-bootstrap even if the install path already exists
         #[clap(long)]
         force: bool,
 
-        /// Target prefix directory (default: distribution-specific home prefix)
-        #[clap(long)]
-        prefix: Option<PathBuf>,
+        /// Install scheme to use instead of the stamped default
+        #[clap(long, value_enum)]
+        scheme: Option<InstallScheme>,
 
         /// Channels to use for a live solve (default: stamped runtime channels)
         #[clap(short, long)]
@@ -126,24 +132,28 @@ pub enum Command {
         offline: bool,
     },
 
-    /// Print runtime status (prefix, channels, packages)
+    /// Print runtime status (install path, channels, packages)
     Status {
-        /// Target prefix directory (default: distribution-specific home prefix)
-        #[clap(long)]
-        prefix: Option<PathBuf>,
+        /// Install scheme to use instead of the stamped default
+        #[clap(long, value_enum)]
+        scheme: Option<InstallScheme>,
     },
 
     /// Activate an environment via subshell (alias for conda spawn)
     Shell {
         /// Name of the environment to activate
         env: Option<String>,
+
+        /// Additional arguments passed to conda spawn
+        #[clap(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<OsString>,
     },
 
-    /// Uninstall this runtime: remove the conda prefix and environments
+    /// Uninstall this runtime: remove the install path and environments
     Uninstall {
-        /// Target prefix directory (default: distribution-specific home prefix)
-        #[clap(long)]
-        prefix: Option<PathBuf>,
+        /// Install scheme to use instead of the stamped default
+        #[clap(long, value_enum)]
+        scheme: Option<InstallScheme>,
 
         /// Skip confirmation prompt
         #[clap(long, short)]
@@ -152,6 +162,9 @@ pub enum Command {
 
     /// Show this help message
     Help,
+
+    #[clap(external_subcommand)]
+    Passthrough(Vec<OsString>),
 }
 
 pub enum LockSource {
@@ -169,11 +182,12 @@ mod tests {
     #[test]
     fn test_parse_bootstrap_defaults() {
         let cli = Cli::parse_from(["pronto-runtime", "bootstrap"]);
+        assert!(cli.path.is_none());
         assert_matches!(
             cli.command,
             Some(Command::Bootstrap {
                 force: false,
-                prefix: None,
+                scheme: None,
                 channel: None,
                 package: None,
                 no_lock: false,
@@ -185,18 +199,21 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_bootstrap_force_prefix() {
-        let cli = Cli::parse_from([
-            "pronto-runtime",
-            "bootstrap",
-            "--force",
-            "--prefix",
-            "/tmp/test",
-        ]);
+    fn test_parse_global_path_for_bootstrap() {
+        let cli = Cli::parse_from(["pronto-runtime", "--path", "/tmp/test", "bootstrap"]);
+        assert_eq!(cli.path.as_deref(), Some(std::path::Path::new("/tmp/test")));
+        assert_matches!(cli.command, Some(Command::Bootstrap { force: false, .. }));
+    }
+
+    #[test]
+    fn test_parse_bootstrap_scheme() {
+        let cli = Cli::parse_from(["pronto-runtime", "bootstrap", "--scheme", "data"]);
         assert_matches!(
             cli.command,
-            Some(Command::Bootstrap { force: true, prefix: Some(ref p), .. })
-                if p == std::path::Path::new("/tmp/test")
+            Some(Command::Bootstrap {
+                scheme: Some(InstallScheme::Data),
+                ..
+            })
         );
     }
 
@@ -258,22 +275,17 @@ mod tests {
     #[test]
     fn test_parse_status() {
         let cli = Cli::parse_from(["pronto-runtime", "status"]);
-        assert_matches!(cli.command, Some(Command::Status { prefix: None }));
+        assert_matches!(cli.command, Some(Command::Status { scheme: None }));
     }
 
     #[test]
-    fn test_parse_status_with_prefix() {
-        let cli = Cli::parse_from([
-            "pronto-runtime",
-            "status",
-            "--prefix",
-            "/opt/pronto-runtime",
-        ]);
-        assert_matches!(
-            cli.command,
-            Some(Command::Status { prefix: Some(ref p) })
-                if p == std::path::Path::new("/opt/pronto-runtime")
+    fn test_parse_status_with_global_path() {
+        let cli = Cli::parse_from(["pronto-runtime", "--path", "/opt/pronto-runtime", "status"]);
+        assert_eq!(
+            cli.path.as_deref(),
+            Some(std::path::Path::new("/opt/pronto-runtime"))
         );
+        assert_matches!(cli.command, Some(Command::Status { .. }));
     }
 
     #[test]
@@ -281,14 +293,33 @@ mod tests {
         let cli = Cli::parse_from(["pronto-runtime", "shell", "myenv"]);
         assert_matches!(
             cli.command,
-            Some(Command::Shell { env: Some(ref e) }) if e == "myenv"
+            Some(Command::Shell { env: Some(ref e), ref args }) if e == "myenv" && args.is_empty()
         );
     }
 
     #[test]
     fn test_parse_shell_no_env() {
         let cli = Cli::parse_from(["pronto-runtime", "shell"]);
-        assert_matches!(cli.command, Some(Command::Shell { env: None }));
+        assert_matches!(
+            cli.command,
+            Some(Command::Shell {
+                env: None,
+                ref args
+            }) if args.is_empty()
+        );
+    }
+
+    #[test]
+    fn test_parse_shell_extra_args() {
+        let cli = Cli::parse_from(["pronto-runtime", "shell", "myenv", "--", "python", "-q"]);
+        assert_matches!(
+            cli.command,
+            Some(Command::Shell {
+                env: Some(ref e),
+                ref args
+            }) if e == "myenv"
+                && args == &vec![OsString::from("python"), OsString::from("-q")]
+        );
     }
 
     #[test]
@@ -298,24 +329,44 @@ mod tests {
             cli.command,
             Some(Command::Uninstall {
                 yes: true,
-                prefix: None
+                scheme: None,
             })
         );
     }
 
     #[test]
-    fn test_parse_uninstall_with_prefix() {
+    fn test_parse_uninstall_with_global_path() {
         let cli = Cli::parse_from([
             "pronto-runtime",
-            "uninstall",
-            "--prefix",
+            "--path",
             "/opt/pronto-runtime",
+            "uninstall",
             "-y",
         ]);
+        assert_eq!(
+            cli.path.as_deref(),
+            Some(std::path::Path::new("/opt/pronto-runtime"))
+        );
+        assert_matches!(cli.command, Some(Command::Uninstall { yes: true, .. }));
+    }
+
+    #[test]
+    fn test_parse_global_path_for_passthrough() {
+        let cli = Cli::parse_from([
+            "pronto-runtime",
+            "--path",
+            "/opt/pronto-runtime",
+            "install",
+            "numpy",
+        ]);
+        assert_eq!(
+            cli.path.as_deref(),
+            Some(std::path::Path::new("/opt/pronto-runtime"))
+        );
         assert_matches!(
             cli.command,
-            Some(Command::Uninstall { yes: true, prefix: Some(ref p) })
-                if p == std::path::Path::new("/opt/pronto-runtime")
+            Some(Command::Passthrough(ref args))
+                if args == &vec![OsString::from("install"), OsString::from("numpy")]
         );
     }
 

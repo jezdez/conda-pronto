@@ -1,14 +1,14 @@
 # Build Locally
 
 Use local builds while iterating on runtime package sets, channel choices, or
-conda-pronto runtime code.
+conda-pronto runtime behavior.
 
 Installed local builds use a prebuilt runtime template:
 
 ```bash
 pronto build \
   --layout online \
-  --name demo \
+  --command demo \
   --template ./pronto-runtime-template
 ```
 
@@ -51,14 +51,15 @@ CI checks the generated runtime lock with:
 pronto lock --check
 ```
 
-## Build A Named Distribution Binary
+## Build A Runtime
 
-`--name` is required. conda-pronto does not provide a default distribution name.
+`--command` is required. conda-pronto does not provide a default runtime
+command name.
 
 ```bash
 pronto build \
   --layout online \
-  --name demo \
+  --command demo \
   --template ./pronto-runtime-template
 ```
 
@@ -67,7 +68,7 @@ Use `--out-dir` to stage somewhere other than `dist/`:
 ```bash
 pronto build \
   --layout online \
-  --name demo \
+  --command demo \
   --template ./pronto-runtime-template \
   --out-dir /tmp/pronto-artifacts
 ```
@@ -81,9 +82,9 @@ Use `pronto run` to build and immediately execute the staged runtime:
 
 ```bash
 pronto run \
-  --name demo \
+  --command demo \
   --template ./pronto-runtime-template \
-  -- bootstrap --prefix /tmp/demo-smoke
+  -- --path /tmp/demo-smoke bootstrap
 ```
 
 Everything after `--` is passed to the generated runtime.
@@ -94,7 +95,7 @@ Pass both the Rust target triple and an artifact label:
 
 ```bash
 pronto build \
-  --name demo \
+  --command demo \
   --target x86_64-unknown-linux-gnu \
   --target-label x86_64-unknown-linux-gnu \
   --template ./pronto-runtime-template-x86_64-unknown-linux-gnu
@@ -104,10 +105,10 @@ The target label is appended to staged artifact names and metadata files.
 
 ## Keep Names Distribution-Specific
 
-Use the public name of the distribution you are building. For example,
-conda-express uses `cx` for its network-bootstrap artifact and `cxz` for its
-embedded-bundle artifact. A different distribution uses a different
-`--name`.
+Use a command owned by the distribution you are building. For example,
+conda-express uses `cx` as its command name. The online layout stages `cx`; the
+embedded layout stages `cxz`. A different distribution uses a different
+`--command`.
 
 ## Run Release Checks
 

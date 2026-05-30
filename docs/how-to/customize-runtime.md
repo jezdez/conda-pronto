@@ -1,26 +1,26 @@
 # Customize A Runtime
 
-Use this guide when you want a conda-pronto-built runtime with your own package set,
-binary name, channels, or documentation URL.
+Use this guide when you want a conda-pronto-built runtime with your own package
+set, command name, install location, channels, or documentation URL.
 
-conda-pronto is generic. It does not publish a first-party runtime binary, and it
-does not reserve a default name. `conda-express` is one downstream distribution
-that uses conda-pronto to publish `cx` and `cxz`; use a name owned by your
-distribution.
+conda-pronto is generic. It does not publish a first-party runtime, and it
+does not reserve a default command name. `conda-express` is one downstream
+distribution that uses conda-pronto to publish `cx` and `cxz`; use a command
+owned by your distribution.
 
 The manifest examples below describe the build input conda-pronto consumes.
 Installed CLI builds pass a released runtime template with `--template`.
 Source checkouts can omit that option while changing conda-pronto itself.
 
-## Choose A Binary Name
+## Choose A Command Name
 
-The runtime name becomes part of the user interface:
+The runtime command name becomes part of the user interface:
 
 - the command users run
-- the default prefix, `~/.NAME`
-- the metadata file, `.NAME.json`
-- the bundle environment variable, `NAME_BUNDLE`
-- the offline environment variable, `NAME_OFFLINE`
+- the default install path, `~/.conda/INSTALL_NAME` with the `conda` scheme
+- the metadata file, `.COMMAND.json`
+- the bundle environment variable, `COMMAND_BUNDLE`
+- the offline environment variable, `COMMAND_OFFLINE`
 
 For environment variables, non-alphanumeric characters are converted to
 underscores. A runtime named `demo` uses `DEMO_BUNDLE` and
@@ -29,15 +29,47 @@ underscores. A runtime named `demo` uses `DEMO_BUNDLE` and
 Use a product-specific name:
 
 ```bash
-pronto build --layout online --name demo
+pronto build --layout online --command demo
 ```
 
 Avoid publishing downstream builds as `cx` or `cxz`. In the conda ecosystem,
 those names identify the official conda-express artifacts.
 
+## Choose An Install Location
+
+By default, a runtime uses the `conda` scheme and installs below
+`~/.conda/COMMAND`, where `COMMAND` is the runtime command name. A downstream
+distribution can choose a different install name without stamping an
+operating-system-specific path:
+
+```toml
+[tool.pronto]
+scheme = "conda"
+install-name = "express"
+```
+
+```bash
+pronto build --layout online --command cx --scheme conda --install-name express
+```
+
+That builds a runtime command named `cx` whose default install path resolves to
+`~/.conda/express` on the user's machine. Users can still override the resolved
+path locally with the global runtime option, for example
+`COMMAND --path PATH bootstrap` or `COMMAND --path PATH status`.
+
+Choose a product-specific install name. conda-pronto does not reserve names
+under `~/.conda`; it writes runtime metadata into bootstrapped prefixes and
+uses that metadata to avoid overwriting prefixes owned by other tools.
+
+For a platformdirs-style location, use `scheme = "data"`. That stores the
+runtime below the platform user data directory, such as
+`${XDG_DATA_HOME:-~/.local/share}/conda/INSTALL_NAME` on Linux,
+`~/Library/Application Support/conda/INSTALL_NAME` on macOS, and
+`%LOCALAPPDATA%\\conda\\INSTALL_NAME` on Windows.
+
 ## Choose Runtime Packages
 
-A conda bootstrap runtime typically needs at least:
+A conda runtime typically needs at least:
 
 - `python`
 - `conda`
@@ -75,9 +107,11 @@ pandas = "*"
 runtime = { features = ["runtime"], no-default-feature = true }
 
 [tool.pronto]
-environment = "runtime"
+source-environment = "runtime"
 exclude = ["conda-libmamba-solver"]
 docs-url = "https://example.com/demo/"
+scheme = "conda"
+install-name = "demo"
 ```
 
 Then refresh the source lockfile with
@@ -115,13 +149,13 @@ pixi lock
 pronto lock
 ```
 
-Build the named runtime:
+Build the runtime:
 
 ```bash
-pronto build --layout online --name demo --template ./pronto-runtime-template
+pronto build --layout online --command demo --template ./pronto-runtime-template
 ```
 
-The staged binary and metadata files are written to `dist/`.
+The staged runtime and metadata files are written to `dist/`.
 
 ## Build In GitHub Actions
 
@@ -134,7 +168,7 @@ at that project root:
 - uses: jezdez/conda-pronto@v0.1.0
   id: pronto
   with:
-    name: demo
+    command: demo
     root: .
     docs-url: "https://example.com/demo/"
 ```
@@ -150,11 +184,11 @@ package archives inside itself:
 ```bash
 pronto build \
   --layout embedded \
-  --name demo \
+  --command demo \
   --template ./pronto-runtime-template
 ```
 
-The embedded artifact uses the `z` suffix, so the staged binary is
+The embedded runtime uses the `z` suffix, so the staged binary is
 `dist/demoz` on Unix and `dist/demoz.exe` on Windows.
 
 The embedded runtime detects its built-in bundle automatically during

@@ -1,10 +1,10 @@
 # Build Your First Runtime
 
-This tutorial builds a local conda bootstrap binary named `demo` and runs it
+This tutorial builds a local conda runtime named `demo` and runs it
 against a temporary prefix.
 
-`demo` is the example binary name. conda-pronto itself provides the builder and
-generic runtime; it does not publish a default runtime binary.
+`demo` is the example command name. conda-pronto itself provides the builder and
+generic runtime template; it does not publish a default runtime.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ Installed `pronto` builds need a prebuilt runtime template passed with
 the builder will compile the local `pronto-runtime` target before stamping it.
 
 Make sure the `pronto` CLI is available on your `PATH`, then derive the runtime
-lock:
+lock that will be stamped into the runtime:
 
 ```bash
 pronto lock
@@ -29,7 +29,7 @@ the conda-pronto runtime configuration, then writes it to `target/pronto/runtime
 
 ## Inspect The Runtime Package Set
 
-Check the package set that will be stamped into the runtime artifact:
+Check the package set that will be stamped into the runtime:
 
 ```bash
 pronto inspect
@@ -38,50 +38,50 @@ pronto inspect
 The output lists every platform in the derived runtime lock, then prints the
 packages for the current platform.
 
-## Build A Network Bootstrap Binary
+## Build An Online Runtime
 
-Build a binary that contains lockfile metadata but downloads package archives
-during bootstrap:
+Build a runtime that contains lockfile metadata but downloads package
+archives during bootstrap:
 
 ```bash
-pronto build --layout online --name demo
+pronto build --layout online --command demo
 ```
 
-The staged files are written to `dist/`. The binary is named `demo` on Unix
-and `demo.exe` on Windows.
+The staged files are written to `dist/`. The runtime is staged as `demo`
+on Unix and `demo.exe` on Windows.
 
 ## Smoke Test The Runtime
 
-Run the staged binary through conda-pronto:
+Run the staged runtime through conda-pronto:
 
 ```bash
-pronto run --name demo -- bootstrap --prefix /tmp/demo
+pronto run --command demo -- --path /tmp/demo bootstrap
 ```
 
 Then ask the generated runtime for status:
 
 ```bash
-dist/demo status --prefix /tmp/demo
+dist/demo --path /tmp/demo status
 ```
 
-The status output reports the binary name, prefix, configured channels,
+The status output reports the command name, install path, configured channels,
 configured package specs, installed package count, and conda executable path.
 
-## Build An Embedded Artifact
+## Build An Embedded Runtime
 
-Build an artifact that carries compressed package archives inside the binary:
+Build a runtime that carries compressed package archives inside the binary:
 
 ```bash
-pronto build --layout embedded --name demo
+pronto build --layout embedded --command demo
 ```
 
-The embedded artifact uses the `z` suffix, so the binary is staged as
+The embedded runtime uses the `z` suffix, so the binary is staged as
 `dist/demoz` on Unix and `dist/demoz.exe` on Windows.
 
-Run the embedded artifact the same way:
+Run the embedded runtime the same way:
 
 ```bash
-dist/demoz bootstrap --prefix /tmp/demoz
+dist/demoz --path /tmp/demoz bootstrap
 ```
 
 The embedded bundle is detected automatically. No `--bundle` or `--offline`

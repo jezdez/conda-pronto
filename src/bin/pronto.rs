@@ -25,21 +25,32 @@ struct ToolSection {
 }
 
 #[derive(Clone, Default, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
 struct ProntoConfig {
     #[serde(default)]
-    channels: Vec<String>,
-    #[serde(default)]
-    packages: Vec<String>,
-    #[serde(default)]
     exclude: Vec<String>,
-    #[serde(default)]
-    environment: Option<String>,
+    #[serde(default, rename = "source-environment")]
+    source_environment: Option<String>,
     #[serde(default, rename = "docs-url")]
     docs_url: Option<String>,
+    #[serde(default)]
+    scheme: Option<runtime_data::InstallScheme>,
+    #[serde(default, rename = "install-name")]
+    install_name: Option<String>,
+}
+
+#[derive(Clone, Default)]
+struct RuntimeStampConfig {
+    channels: Vec<String>,
+    packages: Vec<String>,
+    exclude: Vec<String>,
+    docs_url: Option<String>,
+    scheme: Option<runtime_data::InstallScheme>,
+    install_name: Option<String>,
 }
 
 #[derive(Parser)]
-#[command(name = "pronto", about = "Build ready-to-run conda bootstrap binaries")]
+#[command(name = "pronto", about = "Build ready-to-run conda runtimes")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -69,15 +80,15 @@ enum Command {
         root: Option<PathBuf>,
     },
 
-    /// Build and stage a ready-to-run artifact
+    /// Build and stage a ready-to-run runtime
     Build {
         /// Artifact layout to produce
         #[arg(long, value_enum, default_value_t = BundleLayout::Online)]
         layout: BundleLayout,
 
-        /// Distribution binary name to stage
+        /// Command name to stage for the generated runtime
         #[arg(long)]
-        name: String,
+        command: String,
 
         /// Optional target label appended to staged artifact names
         #[arg(long)]
@@ -99,6 +110,14 @@ enum Command {
         #[arg(long)]
         docs_url: Option<String>,
 
+        /// Install scheme stamped into the generated runtime
+        #[arg(long, value_enum)]
+        scheme: Option<runtime_data::InstallScheme>,
+
+        /// Install name used inside the install scheme
+        #[arg(long)]
+        install_name: Option<String>,
+
         /// Output directory for staged artifacts
         #[arg(long, default_value = "dist")]
         out_dir: PathBuf,
@@ -108,15 +127,15 @@ enum Command {
         root: Option<PathBuf>,
     },
 
-    /// Build and run a staged artifact for local smoke testing
+    /// Build and run a staged runtime for local smoke testing
     Run {
         /// Artifact layout to produce before running
         #[arg(long, value_enum, default_value_t = BundleLayout::Online)]
         layout: BundleLayout,
 
-        /// Distribution binary name to stage
+        /// Command name to stage for the generated runtime
         #[arg(long)]
-        name: String,
+        command: String,
 
         /// Conda platform to bundle/describe (default: current)
         #[arg(long)]
@@ -134,11 +153,19 @@ enum Command {
         #[arg(long)]
         docs_url: Option<String>,
 
+        /// Install scheme stamped into the generated runtime
+        #[arg(long, value_enum)]
+        scheme: Option<runtime_data::InstallScheme>,
+
+        /// Install name used inside the install scheme
+        #[arg(long)]
+        install_name: Option<String>,
+
         /// Project root (default: auto-detect from current directory)
         #[arg(long)]
         root: Option<PathBuf>,
 
-        /// Arguments passed to the staged runtime binary
+        /// Arguments passed to the staged runtime
         #[arg(last = true)]
         args: Vec<OsString>,
     },
@@ -158,7 +185,7 @@ enum Command {
         root: Option<PathBuf>,
     },
 
-    /// Override runtime packages, channels, or excludes in the project manifest
+    /// Patch runtime environment packages, channels, or excludes in the project manifest
     Configure {
         /// Conda package matchspec to include; repeat for multiple packages
         #[arg(long = "package")]
@@ -227,7 +254,7 @@ fn find_project_root(start: &Path) -> Option<PathBuf> {
 struct DerivedRuntimeLock {
     lock_file: LockFile,
     content: String,
-    runtime_config: ProntoConfig,
+    runtime_config: RuntimeStampConfig,
     platforms: Vec<Platform>,
     total_packages: usize,
     total_excluded: usize,
@@ -293,13 +320,15 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
 
     let lock_file = parse_lock(&lock_content, &input.lock_path);
 
-    let runtime_env = if let Some(environment) = input.config.environment.as_deref() {
-        lock_file.environment(environment).unwrap_or_else(|| {
-            panic!(
-                "environment {environment:?} not found in {}",
-                input.lock_path.display()
-            )
-        })
+    let runtime_env = if let Some(source_environment) = input.config.source_environment.as_deref() {
+        lock_file
+            .environment(source_environment)
+            .unwrap_or_else(|| {
+                panic!(
+                    "source environment {source_environment:?} not found in {}",
+                    input.lock_path.display()
+                )
+            })
     } else if let Some(environment) = lock_file.environment("runtime") {
         environment
     } else {
@@ -326,18 +355,14 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
     let mut builder = LockFileBuilder::new()
         .with_platforms(platform_data)
         .expect("failed to initialize runtime lock platforms");
-    let mut runtime_config = input.config.clone();
-
     if !runtime_env.channels().is_empty() {
         builder.set_channels("default", runtime_env.channels().iter().cloned());
     }
-    if runtime_config.channels.is_empty() {
-        runtime_config.channels = runtime_env
-            .channels()
-            .iter()
-            .map(|channel| channel.url.clone())
-            .collect();
-    }
+    let runtime_channels = runtime_env
+        .channels()
+        .iter()
+        .map(|channel| channel.url.clone())
+        .collect();
 
     let mut total_packages = 0usize;
     let mut total_excluded = 0usize;
@@ -370,10 +395,8 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
                 .expect("failed to add package to runtime lock");
         }
     }
-    if runtime_config.packages.is_empty() {
-        runtime_config.packages = resolved_package_names.into_iter().collect();
-        runtime_config.packages.sort();
-    }
+    let mut runtime_packages: Vec<_> = resolved_package_names.into_iter().collect();
+    runtime_packages.sort();
 
     let new_lock = builder.finish();
     let new_content = new_lock
@@ -383,7 +406,14 @@ fn derive_runtime_lock(root: &Path) -> DerivedRuntimeLock {
     DerivedRuntimeLock {
         lock_file: new_lock,
         content: new_content,
-        runtime_config,
+        runtime_config: RuntimeStampConfig {
+            channels: runtime_channels,
+            packages: runtime_packages,
+            exclude: input.config.exclude,
+            docs_url: input.config.docs_url,
+            scheme: input.config.scheme,
+            install_name: input.config.install_name,
+        },
         platforms,
         total_packages,
         total_excluded,
@@ -456,7 +486,7 @@ fn is_supported_pyproject_manifest(path: &Path) -> bool {
         return false;
     };
 
-    has_toml_table(&value, &["tool", "pixi"]) || has_toml_table(&value, &["tool", "pronto"])
+    has_toml_table(&value, &["tool", "pixi"])
 }
 
 fn has_toml_table(value: &toml::Value, path: &[&str]) -> bool {
@@ -622,6 +652,13 @@ async fn download_and_bundle(
         .expect("bundle path has parent")
         .join("bundle");
     std::fs::create_dir_all(bundle_path.parent().expect("bundle path has parent"))?;
+    if let Ok(metadata) = std::fs::symlink_metadata(&bundle_dir) {
+        if metadata.file_type().is_symlink() || metadata.is_file() {
+            std::fs::remove_file(&bundle_dir)?;
+        } else {
+            std::fs::remove_dir_all(&bundle_dir)?;
+        }
+    }
     std::fs::create_dir_all(&bundle_dir)?;
 
     let start = std::time::Instant::now();
@@ -782,16 +819,18 @@ struct PackageInfo {
 #[allow(clippy::too_many_arguments)]
 fn build_artifact(
     layout: BundleLayout,
-    name: String,
+    command: String,
     target_label: Option<String>,
     platform_str: Option<String>,
     target: Option<String>,
     template: Option<PathBuf>,
     docs_url: Option<String>,
+    scheme: Option<runtime_data::InstallScheme>,
+    install_name: Option<String>,
     out_dir: PathBuf,
     root_override: Option<PathBuf>,
 ) -> BuildOutput {
-    validate_artifact_name(&name);
+    validate_command_name(&command);
     if let Some(label) = target_label.as_deref() {
         validate_target_label(label);
     }
@@ -805,6 +844,8 @@ fn build_artifact(
     if let Some(docs_url) = docs_url {
         derived.runtime_config.docs_url = Some(docs_url);
     }
+    apply_install_location_overrides(&mut derived.runtime_config, scheme, install_name);
+    validate_install_location_config(&derived.runtime_config, &command);
     let runtime_lock_path = generated_runtime_lock_path(&root);
     write_generated_runtime_lock(&runtime_lock_path, &derived.content);
 
@@ -829,7 +870,7 @@ fn build_artifact(
         &root,
         &source_binary,
         layout,
-        &name,
+        &command,
         target_label.as_deref(),
         platform,
         target.as_deref(),
@@ -842,24 +883,29 @@ fn build_artifact(
 #[allow(clippy::too_many_arguments)]
 fn run_artifact(
     layout: BundleLayout,
-    name: String,
+    command: String,
     platform: Option<String>,
     out_dir: PathBuf,
     template: Option<PathBuf>,
     docs_url: Option<String>,
+    scheme: Option<runtime_data::InstallScheme>,
+    install_name: Option<String>,
     root_override: Option<PathBuf>,
     args: Vec<OsString>,
 ) {
     let root = project_root(root_override.as_deref());
-    let bundle_env_var = runtime_env_var(&name, "BUNDLE");
+    let bundle_env_var = runtime_env_var(&command, "BUNDLE");
+    let bundle_dir = root.join(PRONTO_STATE_DIR).join("bundle");
     let output = build_artifact(
         layout,
-        name,
+        command,
         None,
         platform,
         None,
         template,
         docs_url,
+        scheme,
+        install_name,
         out_dir,
         Some(root.clone()),
     );
@@ -867,7 +913,7 @@ fn run_artifact(
     let mut command = std::process::Command::new(&output.binary);
     command.args(args);
     if layout == BundleLayout::External {
-        command.env(bundle_env_var, root.join("bundle"));
+        command.env(bundle_env_var, bundle_dir);
     }
 
     let status = command
@@ -1112,8 +1158,8 @@ fn parse_platform(platform_str: Option<String>) -> Platform {
     }
 }
 
-fn validate_artifact_name(name: &str) {
-    validate_artifact_component("artifact name", name);
+fn validate_command_name(command: &str) {
+    validate_artifact_component("command name", command);
 }
 
 fn validate_target_label(label: &str) {
@@ -1122,6 +1168,29 @@ fn validate_target_label(label: &str) {
 
 fn validate_target_triple(target: &str) {
     validate_artifact_component("target triple", target);
+}
+
+fn apply_install_location_overrides(
+    config: &mut RuntimeStampConfig,
+    scheme: Option<runtime_data::InstallScheme>,
+    install_name: Option<String>,
+) {
+    if let Some(scheme) = scheme {
+        config.scheme = Some(scheme);
+    }
+
+    if let Some(install_name) = install_name {
+        validate_install_name(&install_name);
+        config.install_name = Some(install_name);
+    }
+}
+
+fn validate_install_location_config(config: &RuntimeStampConfig, command: &str) {
+    validate_install_name(config.install_name.as_deref().unwrap_or(command));
+}
+
+fn validate_install_name(install_name: &str) {
+    validate_artifact_component("install name", install_name);
 }
 
 fn validate_artifact_component(kind: &str, value: &str) {
@@ -1211,7 +1280,12 @@ fn stamp_runtime_data(
         command_name,
         embedded_command_name: format!("{name}z"),
         display_name: name.to_string(),
-        default_prefix_dir: format!(".{name}"),
+        install_scheme: derived.runtime_config.scheme.unwrap_or_default(),
+        install_name: derived
+            .runtime_config
+            .install_name
+            .clone()
+            .unwrap_or_else(|| name.to_string()),
         metadata_file: format!(".{name}.json"),
         bundle_env_var: runtime_env_var(name, "BUNDLE"),
         offline_env_var: runtime_env_var(name, "OFFLINE"),
@@ -1410,12 +1484,6 @@ fn configure(
             }
         }
         eprintln!("configured {} custom packages", packages.len());
-
-        let mut tool_packages = toml_edit::Array::new();
-        for spec in &packages {
-            tool_packages.push(spec.to_string());
-        }
-        doc["tool"]["pronto"]["packages"] = toml_edit::value(tool_packages);
     }
 
     if !channels.is_empty() {
@@ -1432,11 +1500,6 @@ fn configure(
             }
         }
 
-        let mut tool_channels = toml_edit::Array::new();
-        for c in &channels {
-            tool_channels.push(c.to_string());
-        }
-        doc["tool"]["pronto"]["channels"] = toml_edit::value(tool_channels);
         eprintln!("configured channels: {}", channels.join(", "));
     }
 
@@ -1487,23 +1550,27 @@ fn main() {
         Command::Bundle { platform, root } => gen_bundle(platform, root),
         Command::Build {
             layout,
-            name,
+            command,
             target_label,
             platform,
             target,
             template,
             docs_url,
+            scheme,
+            install_name,
             out_dir,
             root,
         } => {
             let output = build_artifact(
                 layout,
-                name,
+                command,
                 target_label,
                 platform,
                 target,
                 template,
                 docs_url,
+                scheme,
+                install_name,
                 out_dir,
                 root,
             );
@@ -1517,15 +1584,26 @@ fn main() {
         }
         Command::Run {
             layout,
-            name,
+            command,
             platform,
             out_dir,
             template,
             docs_url,
+            scheme,
+            install_name,
             root,
             args,
         } => run_artifact(
-            layout, name, platform, out_dir, template, docs_url, root, args,
+            layout,
+            command,
+            platform,
+            out_dir,
+            template,
+            docs_url,
+            scheme,
+            install_name,
+            root,
+            args,
         ),
         Command::Inspect {
             platform,
@@ -1612,7 +1690,7 @@ name = "demo"
 channels = ["conda-forge"]
 
 [tool.pronto]
-environment = "runtime"
+source-environment = "runtime"
 "#,
         )
         .unwrap();
@@ -1621,7 +1699,24 @@ environment = "runtime"
         let input = discover_project_input(tmp.path());
 
         assert_eq!(input.lock_path, tmp.path().join("pixi.lock"));
-        assert_eq!(input.config.environment.as_deref(), Some("runtime"));
+        assert_eq!(input.config.source_environment.as_deref(), Some("runtime"));
+    }
+
+    #[test]
+    fn test_pyproject_requires_pixi_config() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(
+            tmp.path().join("pyproject.toml"),
+            r#"
+[tool.pronto]
+source-environment = "runtime"
+"#,
+        )
+        .unwrap();
+
+        assert!(!is_supported_pyproject_manifest(
+            &tmp.path().join("pyproject.toml")
+        ));
     }
 
     #[test]
@@ -1635,7 +1730,7 @@ name = "demo"
 channels = ["conda-forge"]
 
 [tool.pronto]
-environment = "runtime"
+source-environment = "runtime"
 "#,
         )
         .unwrap();
@@ -1777,36 +1872,36 @@ environment = "runtime"
     }
 
     #[test]
-    fn test_artifact_name_allows_filename_safe_components() {
-        validate_artifact_name("conda-pronto_1.0");
+    fn test_command_name_allows_filename_safe_components() {
+        validate_command_name("conda-pronto_1.0");
     }
 
     #[test]
-    #[should_panic(expected = "artifact name must not be . or ..")]
-    fn test_artifact_name_rejects_dot_component() {
-        validate_artifact_name(".");
+    #[should_panic(expected = "command name must not be . or ..")]
+    fn test_command_name_rejects_dot_component() {
+        validate_command_name(".");
     }
 
     #[test]
-    #[should_panic(expected = "artifact name must start with an ASCII letter or digit")]
-    fn test_artifact_name_rejects_leading_dash() {
-        validate_artifact_name("-demo");
-    }
-
-    #[test]
-    #[should_panic(
-        expected = "artifact name may only contain ASCII letters, digits, dots, dashes, and underscores"
-    )]
-    fn test_artifact_name_rejects_path_separator() {
-        validate_artifact_name("demo/tool");
+    #[should_panic(expected = "command name must start with an ASCII letter or digit")]
+    fn test_command_name_rejects_leading_dash() {
+        validate_command_name("-demo");
     }
 
     #[test]
     #[should_panic(
-        expected = "artifact name may only contain ASCII letters, digits, dots, dashes, and underscores"
+        expected = "command name may only contain ASCII letters, digits, dots, dashes, and underscores"
     )]
-    fn test_artifact_name_rejects_newline() {
-        validate_artifact_name("demo\ntool");
+    fn test_command_name_rejects_path_separator() {
+        validate_command_name("demo/tool");
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "command name may only contain ASCII letters, digits, dots, dashes, and underscores"
+    )]
+    fn test_command_name_rejects_newline() {
+        validate_command_name("demo\ntool");
     }
 
     #[test]
@@ -1823,6 +1918,95 @@ environment = "runtime"
     )]
     fn test_target_triple_rejects_path_like_value() {
         validate_target_triple("custom/target.json");
+    }
+
+    #[test]
+    fn test_install_name_allows_filename_safe_components() {
+        validate_install_name("conda-express_1.0");
+    }
+
+    #[test]
+    fn test_build_accepts_scheme_with_install_name() {
+        let cli = Cli::try_parse_from([
+            "pronto",
+            "build",
+            "--command",
+            "cx",
+            "--scheme",
+            "data",
+            "--install-name",
+            "express",
+        ])
+        .unwrap();
+
+        let Command::Build {
+            command,
+            scheme,
+            install_name,
+            ..
+        } = cli.command
+        else {
+            panic!("expected build command");
+        };
+
+        assert_eq!(command, "cx");
+        assert_eq!(scheme, Some(runtime_data::InstallScheme::Data));
+        assert_eq!(install_name.as_deref(), Some("express"));
+    }
+
+    #[test]
+    fn test_build_rejects_path_option() {
+        let result = Cli::try_parse_from([
+            "pronto",
+            "build",
+            "--command",
+            "demo",
+            "--path",
+            "/tmp/demo",
+        ]);
+
+        assert!(result.is_err(), "build-time --path should not be accepted");
+    }
+
+    #[test]
+    fn test_run_rejects_path_option_before_runtime_args() {
+        let result = Cli::try_parse_from([
+            "pronto",
+            "run",
+            "--command",
+            "demo",
+            "--path",
+            "/tmp/demo",
+            "--",
+            "status",
+        ]);
+
+        assert!(
+            result.is_err(),
+            "run-time --path must be passed after `--` to the staged runtime"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "install name must not be . or ..")]
+    fn test_install_name_rejects_dot_component() {
+        validate_install_name(".");
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "install name may only contain ASCII letters, digits, dots, dashes, and underscores"
+    )]
+    fn test_install_name_rejects_path_separator() {
+        validate_install_name("conda/express");
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "install name may only contain ASCII letters, digits, dots, dashes, and underscores"
+    )]
+    fn test_install_name_rejects_newline() {
+        validate_install_name("express\n");
     }
 
     #[test]

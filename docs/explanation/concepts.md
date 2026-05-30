@@ -3,7 +3,7 @@
 conda-pronto separates three concerns:
 
 - resolving and recording a conda runtime package set
-- building a generic bootstrap runtime and stamping it with distribution data
+- stamping a generic runtime template into a distribution-specific runtime
 - staging release artifacts that downstream projects can distribute
 
 The split from conda-express makes that separation explicit. conda-pronto owns these
@@ -15,27 +15,41 @@ them.
 The `pronto` CLI is the builder. It reads `conda.toml`/`conda.lock`, the
 compatible `pixi.toml`/`pixi.lock` pair, or Pixi's `pyproject.toml` with
 `pixi.lock`, applies `[tool.pronto]`, then derives a runtime lock, bundle
-files, runtime binaries, and artifact metadata.
+files, runtimes, and artifact metadata.
 
 The selected source lockfile is the source of the concrete conda package
 records. conda-pronto is not a replacement for
 {external+conda-workspaces:doc}`conda-workspaces <index>`, Pixi, or any other
-workspace solver; it consumes a solved environment and turns it into bootstrap
-artifacts.
+workspace solver; it consumes a solved environment and turns it into
+runtime artifacts.
+
+## Runtime
+
+A runtime is the executable that users run after conda-pronto finishes.
+Examples include `demo`, `demoz`, `cx`, and `cxz`.
+
+The `--command` value is the base command name for that runtime. It is not
+a conda environment name. The `embedded` layout adds the `z` suffix to the
+staged executable name because that variant contains compressed package
+archives.
+
+Use "runtime" for the thing conda-pronto produces, "command name" for the
+name passed to `--command`, and "artifact" for the release files written to
+`dist/`.
 
 ## Runtime Template
 
 `pronto-runtime` is an internal generic binary target. It is not a first-party
 distribution. During `pronto build`, the builder copies a generic runtime
-template under the requested artifact name and stamps the copy with the
-downstream distribution name, prefix, metadata filename, environment variable
-names, runtime lock, and optional bundle. Released builds use prebuilt template
-assets; source checkouts can build the template locally as a development
-fallback.
+template under the requested command name and stamps the copy with the
+downstream command name, install scheme and install name, metadata filename, environment variable
+names, runtime lock, and optional bundle. The stamped copy is the runtime.
+Released builds use prebuilt template assets; source checkouts can build the
+template locally as a development fallback.
 
 ## Runtime Lock
 
-The runtime lock is derived from the configured environment, then filtered
+The runtime lock is derived from the configured source environment, then filtered
 through `[tool.pronto].exclude`. conda-pronto writes it to
 `target/pronto/runtime.lock` as generated build output, stamps it into every
 runtime artifact, and stages a copy next to the output binary. It is not a
@@ -51,9 +65,9 @@ The generated runtime can install from:
 
 Bundles contain downloaded conda package archives.
 
-The `external` layout pairs a runtime binary with `NAME.bundle.tar.zst`. The
-`embedded` layout appends `z` to the binary name and includes the compressed
-bundle inside the executable.
+The `external` layout pairs a runtime with `COMMAND.bundle.tar.zst`. The
+`embedded` layout appends `z` to the command name and includes the compressed
+bundle inside the runtime.
 
-An embedded runtime automatically uses its bundled archives during bootstrap.
-An explicit `--bundle` can still override that bundle.
+An embedded runtime automatically uses its bundled archives during
+bootstrap. An explicit `--bundle` can still override that bundle.

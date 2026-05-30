@@ -1,18 +1,19 @@
 ---
 source: tests/cli_integration.rs
+assertion_line: 24
 expression: stdout
 ---
-This runtime bootstraps a conda prefix from a stamped lockfile.
+This runtime installs a conda environment from a stamped lockfile.
 
 After bootstrap, commands are passed through to the installed conda executable.
 
 Usage: pronto-runtime [OPTIONS] [COMMAND]
 
 Commands:
-  bootstrap  Bootstrap a fresh conda installation into the prefix
-  status     Print runtime status (prefix, channels, packages)
+  bootstrap  Bootstrap a fresh conda installation into the install path
+  status     Print runtime status (install path, channels, packages)
   shell      Activate an environment via subshell (alias for conda spawn)
-  uninstall  Uninstall this runtime: remove the conda prefix and environments
+  uninstall  Uninstall this runtime: remove the install path and environments
   help       Show this help message
 
 Options:
@@ -22,6 +23,9 @@ Options:
   -q, --quiet
           Suppress non-essential output
 
+      --path <PATH>
+          Runtime install path to use instead of the stamped default
+
   -h, --help
           Print help (see a summary with '-h')
 
@@ -30,7 +34,7 @@ Options:
 
 Quick start:
 
-  pronto-runtime bootstrap                           Install conda into ~/.pronto-runtime
+  pronto-runtime bootstrap                           Install conda into ~/.conda/pronto-runtime
   pronto-runtime create -n myenv python=3.12 numpy   Create an environment
   pronto-runtime shell myenv                         Activate (spawns a subshell)
   exit                                   Leave the environment
@@ -38,7 +42,7 @@ Quick start:
 Management:
 
   pronto-runtime status                              Show installation details
-  pronto-runtime uninstall                           Remove conda prefix and all environments
+  pronto-runtime uninstall                           Remove the install path and environments
 
 Pass-through:
 

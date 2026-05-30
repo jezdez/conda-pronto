@@ -1,6 +1,6 @@
-name: "Build conda bootstrap binary"
+name: "Build conda runtime"
 description: >
-  Build a custom conda bootstrap binary from a committed project lockfile using
+  Build a custom conda runtime from a committed project lockfile using
   released conda-pronto artifacts. Runs on the current runner; use a matrix
   strategy for multi-platform builds.
 branding:
@@ -8,8 +8,8 @@ branding:
   color: green
 
 inputs:
-  name:
-    description: "Distribution binary name to build."
+  command:
+    description: "Runtime command name to build."
     required: true
   root:
     description: "Project root containing conda.toml/conda.lock, pixi.toml/pixi.lock, or pyproject.toml/pixi.lock."
@@ -23,10 +23,18 @@ inputs:
     description: "Documentation URL embedded in the runtime help output."
     required: false
     default: "https://jezdez.github.io/conda-pronto/"
+  scheme:
+    description: "Install scheme stamped into the runtime."
+    required: false
+    default: "conda"
+  install-name:
+    description: "Name used inside the install scheme."
+    required: false
+    default: ""
 
 outputs:
   binary-path:
-    description: "Absolute path to the built distribution binary."
+    description: "Absolute path to the built runtime."
     value: ${{ steps.stage.outputs.binary_path }}
   asset-name:
     description: "Platform-qualified asset name."
@@ -186,8 +194,10 @@ runs:
       shell: bash
       env:
         PRONTO_LAYOUT: ${{ inputs.layout }}
-        PRONTO_NAME: ${{ inputs.name }}
+        PRONTO_COMMAND: ${{ inputs.command }}
+        PRONTO_INSTALL_NAME: ${{ inputs.install-name }}
         PRONTO_ROOT: ${{ inputs.root }}
+        PRONTO_SCHEME: ${{ inputs.scheme }}
       run: |
         root="${PRONTO_ROOT:-.}"
         case "$root" in
@@ -196,8 +206,8 @@ runs:
             exit 1
             ;;
         esac
-        if [[ ! "$PRONTO_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-          echo "Invalid distribution binary name: ${PRONTO_NAME}" >&2
+        if [[ ! "$PRONTO_COMMAND" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+          echo "Invalid runtime command name: ${PRONTO_COMMAND}" >&2
           echo "Use ASCII letters, digits, dots, dashes, or underscores, starting with a letter or digit." >&2
           exit 1
         fi
@@ -209,7 +219,21 @@ runs:
             exit 1
             ;;
         esac
-
+        case "${PRONTO_SCHEME:-conda}" in
+          conda|data)
+            ;;
+          *)
+            echo "Unsupported install scheme: ${PRONTO_SCHEME}. Use 'conda' or 'data'." >&2
+            exit 1
+            ;;
+        esac
+        if [ -n "$PRONTO_INSTALL_NAME" ]; then
+          if [[ ! "$PRONTO_INSTALL_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "Invalid install name: ${PRONTO_INSTALL_NAME}" >&2
+            echo "Use ASCII letters, digits, dots, dashes, or underscores, starting with a letter or digit." >&2
+            exit 1
+          fi
+        fi
         if [ ! -d "$root" ]; then
           echo "Project root does not exist: ${root}" >&2
           exit 1
@@ -245,35 +269,44 @@ runs:
       shell: bash
       env:
         PRONTO_DOCS_URL: ${{ inputs.docs-url }}
+        PRONTO_INSTALL_NAME: ${{ inputs.install-name }}
         PRONTO_LAYOUT: ${{ inputs.layout }}
-        PRONTO_NAME: ${{ inputs.name }}
+        PRONTO_COMMAND: ${{ inputs.command }}
         PRONTO_PATH: ${{ steps.download.outputs.pronto_path }}
         PRONTO_ROOT: ${{ steps.project.outputs.root }}
+        PRONTO_SCHEME: ${{ inputs.scheme }}
         PRONTO_TARGET: ${{ steps.resolve.outputs.target }}
         TEMPLATE_PATH: ${{ steps.download.outputs.template_path }}
       run: |
-        "$PRONTO_PATH" build \
-          --layout "$PRONTO_LAYOUT" \
-          --name "$PRONTO_NAME" \
-          --target "$PRONTO_TARGET" \
-          --target-label "$PRONTO_TARGET" \
-          --template "$TEMPLATE_PATH" \
-          --docs-url "$PRONTO_DOCS_URL" \
-          --root "$PRONTO_ROOT" \
+        build_args=(
+          build
+          --layout "$PRONTO_LAYOUT"
+          --command "$PRONTO_COMMAND"
+          --target "$PRONTO_TARGET"
+          --target-label "$PRONTO_TARGET"
+          --template "$TEMPLATE_PATH"
+          --docs-url "$PRONTO_DOCS_URL"
+          --root "$PRONTO_ROOT"
           --out-dir "${GITHUB_WORKSPACE}/.pronto-artifacts"
+        )
+        build_args+=(--scheme "${PRONTO_SCHEME:-conda}")
+        if [ -n "$PRONTO_INSTALL_NAME" ]; then
+          build_args+=(--install-name "$PRONTO_INSTALL_NAME")
+        fi
+        "$PRONTO_PATH" "${build_args[@]}"
 
-    - name: Stage binary outputs
+    - name: Stage runtime outputs
       id: stage
       shell: bash
       env:
         PRONTO_LAYOUT: ${{ inputs.layout }}
-        PRONTO_NAME: ${{ inputs.name }}
+        PRONTO_COMMAND: ${{ inputs.command }}
         PRONTO_TARGET: ${{ steps.resolve.outputs.target }}
       run: |
         if [ "$PRONTO_LAYOUT" = "embedded" ]; then
-          prefix="${PRONTO_NAME}z"
+          prefix="${PRONTO_COMMAND}z"
         else
-          prefix="$PRONTO_NAME"
+          prefix="$PRONTO_COMMAND"
         fi
         stem="${prefix}-${PRONTO_TARGET}"
         if [[ "$PRONTO_TARGET" == *"windows"* ]]; then

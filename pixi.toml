@@ -1,6 +1,6 @@
 [workspace]
 name = "conda-pronto"
-description = "Build ready-to-run conda bootstrap binaries"
+description = "Build ready-to-run conda runtimes"
 channels = ["conda-forge"]
 platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64"]
 license = "BSD-3-Clause"
@@ -68,12 +68,5 @@ runtime = { features = ["runtime"], no-default-feature = true }
 test = ["test"]
 
 [tool.pronto]
-environment = "runtime"
-channels = ["conda-forge"]
-packages = [
-    "python >=3.12",
-    "conda >=25.1",
-    "conda-rattler-solver",
-    "conda-spawn >=0.1.0",
-]
+source-environment = "runtime"
 exclude = ["conda-libmamba-solver"]

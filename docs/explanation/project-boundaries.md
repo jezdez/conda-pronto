@@ -1,6 +1,6 @@
 # Project Boundaries
 
-conda-pronto builds ready-to-run conda bootstrap binaries. It is not itself a conda
+conda-pronto builds ready-to-run conda runtimes. It is not itself a conda
 distribution.
 
 The split from conda-express puts the generic pieces here and leaves
@@ -19,7 +19,7 @@ metadata files.
 
 :::{grid-item-card} Downstream Distributions
 
-Package sets, binary names, release channels, installer wrappers, and user
+Package sets, command names, release channels, installer wrappers, and user
 documentation.
 :::
 
@@ -38,7 +38,7 @@ conda-pronto owns the reusable build and runtime machinery:
   and `.sha256`
 - exposing the composite GitHub Action and local builder CLI
 
-The generated runtime also lives here: `bootstrap`, `status`, `shell`,
+The generated runtime behavior also lives here: `bootstrap`, `status`, `shell`,
 `uninstall`, pass-through to conda, offline bundle handling, embedded bundle
 handling, and conda-spawn based activation.
 
@@ -46,7 +46,7 @@ handling, and conda-spawn based activation.
 
 Downstream projects decide what their users get:
 
-- binary names
+- command names
 - package sets
 - channels
 - package exclusions
@@ -58,7 +58,7 @@ Downstream projects decide what their users get:
 - GitHub Release policy
 - constructor-based installers or enterprise package manager recipes
 
-conda-pronto produces the binaries and metadata those channels can distribute. It
+conda-pronto produces the runtimes and metadata those channels can distribute. It
 does not decide whether every runtime includes the same conda plugins or uses
 the same name.
 
@@ -67,14 +67,14 @@ the same name.
 {external+conda-express:doc}`conda-express <index>` is the downstream
 distribution that publishes `cx` and `cxz`.
 
-It owns the opinionated native conda package set, the `cx`/`cxz` names,
+It owns the opinionated native conda package set, the `cx`/`cxz` command names,
 Homebrew and shell-script installation, Docker images, PyPI and crates.io
 distribution wrappers, and release policy for those artifacts.
 
-When conda-express needs binaries, its workflows call conda-pronto from the
-conda-express project root and pass the `cx`/`cxz` artifact names. The package
-set remains conda-express project input; conda-pronto does not hard-code those
-choices. Its own scope page is
+When conda-express needs runtimes, its workflows call conda-pronto from the
+conda-express project root and pass the `cx` command name. The `embedded`
+layout stages `cxz`. The package set remains conda-express project input;
+conda-pronto does not hard-code those choices. Its own scope page is
 {external+conda-express:doc}`Project scope <scope>`.
 
 ## Relationship To Other Tools
@@ -87,11 +87,11 @@ conda-pronto complements other conda ecosystem tools:
 | Pixi | Solves and records compatible runtime environments that conda-pronto can consume |
 | rattler-build | Builds conda packages |
 | constructor | Builds OS installers |
-| conda-pronto | Builds bootstrap binaries that can be distributed directly or wrapped by other channels |
+| conda-pronto | Builds runtimes that can be distributed directly or wrapped by other channels |
 | {external+conda-express:doc}`conda-express <index>` | A conda-pronto-based downstream distribution for `cx` and `cxz` |
 
 conda-pronto does not produce installer-generator output such as `.sh`, `.pkg`, or
-`.msi`. Those formats can wrap conda-pronto-built binaries when a downstream
+`.msi`. Those formats can wrap conda-pronto-built runtimes when a downstream
 distribution needs them.
 
 The {external+conda-express:doc}`conda-express docs <index>` are useful as a

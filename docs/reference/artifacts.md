@@ -1,22 +1,22 @@
 # Artifact Reference
 
-Every `pronto build` writes a runtime binary plus metadata files. The runtime
-binary is the final stamped artifact. Downstream signing and attestation
+Every `pronto build` writes a runtime plus metadata files. The runtime
+is the final stamped binary artifact. Downstream signing and attestation
 workflows run after conda-pronto writes these files.
 
 ## Layouts
 
-| Layout | Binary name | Bundle file | Network during bootstrap |
+| Layout | Runtime | Bundle file | Network during bootstrap |
 | --- | --- | --- | --- |
-| `online` | `NAME` | none | yes |
-| `external` | `NAME` | `NAME.bundle.tar.zst` | optional |
-| `embedded` | `NAMEz` | embedded in binary | no |
+| `online` | `COMMAND` | none | yes |
+| `external` | `COMMAND` | `COMMAND.bundle.tar.zst` | optional |
+| `embedded` | `COMMANDz` | embedded in binary | no |
 
 On Windows, binary filenames also include `.exe`.
 
 ## Metadata Files
 
-For an `online` build named `demo`, conda-pronto stages:
+For an `online` build with command `demo`, conda-pronto stages:
 
 - `demo` or `demo.exe`
 - `demo.runtime.lock`
@@ -35,10 +35,10 @@ target-qualified equivalent.
 
 ## Stamped Runtime Data
 
-conda-pronto appends a runtime data block to every staged binary. The block contains
-the runtime lock, runtime metadata, command names, default prefix, docs URL,
-bundle environment variable names, and the embedded bundle bytes for
-`embedded` builds.
+conda-pronto appends a runtime data block to every staged runtime. The block
+contains the runtime lock, runtime metadata, command names, install scheme,
+install name, docs URL, bundle environment variable names, and the embedded
+bundle bytes for `embedded` builds.
 
 The data block ends with:
 
@@ -49,8 +49,8 @@ The data block ends with:
 - bundle SHA256, or the SHA256 of empty bytes when no embedded bundle is present
 - conda-pronto runtime-data magic bytes
 
-The generated runtime validates the stamped header at startup. For embedded
-artifacts, it also verifies the bundle checksum before extracting package
+The generated runtime validates the stamped header at startup. For
+embedded artifacts, it also verifies the bundle checksum before extracting package
 archives during `bootstrap`.
 
 The binary checksum in `.sha256` covers the final stamped artifact. The
@@ -66,7 +66,7 @@ gh attestation verify ./pronto-x86_64-unknown-linux-gnu \
 ```
 
 Downstream distributions can add their own attestations or platform signing
-after conda-pronto finishes staging their named artifacts.
+after conda-pronto finishes staging their runtime artifacts.
 
 ## Info JSON
 
@@ -76,7 +76,7 @@ The info JSON contains:
 - artifact name
 - layout
 - conda platform
-- binary filename
+- runtime filename
 - optional external bundle filename
 - lock filename
 - package list filename

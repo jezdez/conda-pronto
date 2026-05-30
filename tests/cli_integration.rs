@@ -9,7 +9,27 @@ use rstest::rstest;
 use tempfile::TempDir;
 
 fn runtime() -> assert_cmd::Command {
+    let mut cmd = cargo_bin_cmd!("pronto-runtime");
+    cmd.env("PRONTO_ALLOW_UNSTAMPED_TEMPLATE", "1");
+    cmd
+}
+
+fn write_runtime_metadata(prefix: &std::path::Path) {
+    std::fs::write(
+        prefix.join(".pronto-runtime.json"),
+        r#"{"version":"test","channels":["conda-forge"],"packages":["python"]}"#,
+    )
+    .unwrap();
+}
+
+#[test]
+fn test_runtime_template_refuses_to_run_without_stamp() {
     cargo_bin_cmd!("pronto-runtime")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "runtime template, not a runnable conda runtime",
+        ));
 }
 
 #[test]
@@ -50,10 +70,10 @@ fn test_runtime_nonexistent_prefix_reports_missing(#[case] cmd: MissingPrefixCmd
     let mut c = runtime();
     match cmd {
         MissingPrefixCmd::Status => {
-            c.args(["status", "--prefix", path]);
+            c.args(["status", "--path", path]);
         }
         MissingPrefixCmd::Uninstall => {
-            c.args(["uninstall", "--prefix", path, "--yes"]);
+            c.args(["uninstall", "--path", path, "--yes"]);
         }
     }
     c.assert()
@@ -65,12 +85,25 @@ fn test_runtime_nonexistent_prefix_reports_missing(#[case] cmd: MissingPrefixCmd
 fn test_runtime_bootstrap_already_exists() {
     let tmp = TempDir::new().unwrap();
     std::fs::create_dir(tmp.path().join("conda-meta")).unwrap();
+    write_runtime_metadata(tmp.path());
 
     runtime()
-        .args(["bootstrap", "--prefix", tmp.path().to_str().unwrap()])
+        .args(["bootstrap", "--path", tmp.path().to_str().unwrap()])
         .assert()
         .success()
-        .stderr(predicate::str::contains("already bootstrapped"));
+        .stderr(predicate::str::contains("already installed"));
+}
+
+#[test]
+fn test_runtime_bootstrap_refuses_unmanaged_prefix() {
+    let tmp = TempDir::new().unwrap();
+    std::fs::create_dir(tmp.path().join("conda-meta")).unwrap();
+
+    runtime()
+        .args(["bootstrap", "--path", tmp.path().to_str().unwrap()])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unmanaged install path"));
 }
 
 #[cfg_attr(not(feature = "online_tests"), ignore)]
@@ -80,7 +113,7 @@ fn test_runtime_bootstrap_to_temp_prefix() {
     let prefix = tmp.path().join("pronto-runtime-test-bootstrap");
 
     runtime()
-        .args(["bootstrap", "--prefix", prefix.to_str().unwrap()])
+        .args(["bootstrap", "--path", prefix.to_str().unwrap()])
         .timeout(std::time::Duration::from_secs(120))
         .assert()
         .success()
@@ -108,13 +141,13 @@ fn test_runtime_status_after_bootstrap() {
     let prefix = tmp.path().join("pronto-runtime-test-status");
 
     runtime()
-        .args(["bootstrap", "--prefix", prefix.to_str().unwrap()])
+        .args(["bootstrap", "--path", prefix.to_str().unwrap()])
         .timeout(std::time::Duration::from_secs(120))
         .assert()
         .success();
 
     runtime()
-        .args(["status", "--prefix", prefix.to_str().unwrap()])
+        .args(["status", "--path", prefix.to_str().unwrap()])
         .assert()
         .success()
         .stdout(
@@ -131,32 +164,36 @@ fn test_runtime_uninstall_removes_prefix() {
     let prefix = tmp.path().join("pronto-runtime-test-uninstall");
 
     runtime()
-        .args(["bootstrap", "--prefix", prefix.to_str().unwrap()])
+        .args(["bootstrap", "--path", prefix.to_str().unwrap()])
         .timeout(std::time::Duration::from_secs(120))
         .assert()
         .success();
 
-    assert!(prefix.exists(), "prefix should exist after bootstrap");
+    assert!(prefix.exists(), "install path should exist after bootstrap");
 
     runtime()
-        .args(["uninstall", "--prefix", prefix.to_str().unwrap(), "--yes"])
+        .args(["uninstall", "--path", prefix.to_str().unwrap(), "--yes"])
         .assert()
         .success()
         .stderr(predicate::str::contains("uninstalled"));
 
-    assert!(!prefix.exists(), "prefix should be removed after uninstall");
+    assert!(
+        !prefix.exists(),
+        "install path should be removed after uninstall"
+    );
 }
 
-/// Uses `--prefix` so Windows CI does not depend on `dirs::home_dir()` (known-folder profile),
+/// Uses `--path` so Windows CI does not depend on `dirs::home_dir()` (known-folder profile),
 /// which ignores `HOME` / `USERPROFILE` for a synthetic layout.
 #[test]
 fn test_runtime_uninstall_interactive_prompt_declined() {
     let tmp = TempDir::new().unwrap();
     let prefix = tmp.path().join("pronto-runtime-uninstall-interactive");
     std::fs::create_dir_all(prefix.join("conda-meta")).unwrap();
+    write_runtime_metadata(&prefix);
 
     runtime()
-        .args(["uninstall", "--prefix", prefix.to_str().unwrap()])
+        .args(["uninstall", "--path", prefix.to_str().unwrap()])
         .write_stdin("n\n")
         .assert()
         .success()
@@ -166,8 +203,23 @@ fn test_runtime_uninstall_interactive_prompt_declined() {
 
     assert!(
         prefix.exists(),
-        "prefix should remain after declining uninstall"
+        "install path should remain after declining uninstall"
     );
+}
+
+#[test]
+fn test_runtime_uninstall_refuses_unmanaged_prefix() {
+    let tmp = TempDir::new().unwrap();
+    let prefix = tmp.path().join("pronto-runtime-uninstall-unmanaged");
+    std::fs::create_dir_all(prefix.join("conda-meta")).unwrap();
+
+    runtime()
+        .args(["uninstall", "--path", prefix.to_str().unwrap(), "--yes"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unmanaged install path"));
+
+    assert!(prefix.exists(), "unmanaged prefix should not be removed");
 }
 
 #[test]
@@ -176,7 +228,7 @@ fn test_runtime_bootstrap_offline_no_lock_rejected() {
     runtime()
         .args([
             "bootstrap",
-            "--prefix",
+            "--path",
             tmp.path().to_str().unwrap(),
             "--offline",
             "--no-lock",
@@ -192,7 +244,7 @@ fn test_runtime_bootstrap_package_requires_live_solve() {
     runtime()
         .args([
             "bootstrap",
-            "--prefix",
+            "--path",
             tmp.path().to_str().unwrap(),
             "--package",
             "numpy",
@@ -209,7 +261,7 @@ fn test_runtime_bootstrap_bundle_bad_dir_rejected() {
     runtime()
         .args([
             "bootstrap",
-            "--prefix",
+            "--path",
             tmp.path().to_str().unwrap(),
             "--bundle",
             bad_dir.to_str().unwrap(),
@@ -223,11 +275,11 @@ fn test_runtime_bootstrap_bundle_bad_dir_rejected() {
 #[test]
 fn test_runtime_bootstrap_offline_from_cache() {
     let tmp = TempDir::new().unwrap();
-    let prefix1 = tmp.path().join("online");
-    let prefix2 = tmp.path().join("offline");
+    let install_path1 = tmp.path().join("online");
+    let install_path2 = tmp.path().join("offline");
 
     runtime()
-        .args(["bootstrap", "--prefix", prefix1.to_str().unwrap()])
+        .args(["bootstrap", "--path", install_path1.to_str().unwrap()])
         .timeout(std::time::Duration::from_secs(120))
         .assert()
         .success();
@@ -235,28 +287,28 @@ fn test_runtime_bootstrap_offline_from_cache() {
     runtime()
         .args([
             "bootstrap",
-            "--prefix",
-            prefix2.to_str().unwrap(),
+            "--path",
+            install_path2.to_str().unwrap(),
             "--offline",
         ])
         .assert()
         .success()
         .stderr(predicate::str::contains("bootstrapped successfully"));
 
-    assert!(prefix2.join("conda-meta").is_dir());
-    assert!(prefix2.join(".pronto-runtime.json").exists());
+    assert!(install_path2.join("conda-meta").is_dir());
+    assert!(install_path2.join(".pronto-runtime.json").exists());
 }
 
 #[cfg_attr(not(feature = "online_tests"), ignore)]
 #[test]
 fn test_runtime_bootstrap_bundle_offline() {
     let tmp = TempDir::new().unwrap();
-    let prefix1 = tmp.path().join("seed");
-    let prefix2 = tmp.path().join("offline");
+    let install_path1 = tmp.path().join("seed");
+    let install_path2 = tmp.path().join("offline");
     let bundle_dir = tmp.path().join("bundle");
 
     runtime()
-        .args(["bootstrap", "--prefix", prefix1.to_str().unwrap()])
+        .args(["bootstrap", "--path", install_path1.to_str().unwrap()])
         .timeout(std::time::Duration::from_secs(120))
         .assert()
         .success();
@@ -278,8 +330,8 @@ fn test_runtime_bootstrap_bundle_offline() {
     runtime()
         .args([
             "bootstrap",
-            "--prefix",
-            prefix2.to_str().unwrap(),
+            "--path",
+            install_path2.to_str().unwrap(),
             "--bundle",
             bundle_dir.to_str().unwrap(),
             "--offline",
@@ -288,8 +340,8 @@ fn test_runtime_bootstrap_bundle_offline() {
         .success()
         .stderr(predicate::str::contains("bootstrapped successfully"));
 
-    assert!(prefix2.join("conda-meta").is_dir());
-    assert!(prefix2.join(".pronto-runtime.json").exists());
+    assert!(install_path2.join("conda-meta").is_dir());
+    assert!(install_path2.join(".pronto-runtime.json").exists());
 }
 
 #[rstest]
@@ -302,14 +354,15 @@ fn test_runtime_bootstrap_bundle_offline() {
 #[case::empty("", false)]
 fn test_runtime_offline_env_var_parsing(#[case] value: &str, #[case] expect_offline: bool) {
     let tmp = TempDir::new().unwrap();
-    // Pre-create conda-meta so non-offline cases short-circuit to "already bootstrapped"
+    // Pre-create conda-meta so non-offline cases short-circuit to "already installed"
     // instead of attempting a real solve that requires network.
     std::fs::create_dir(tmp.path().join("conda-meta")).unwrap();
+    write_runtime_metadata(tmp.path());
 
     let mut cmd = runtime();
     cmd.env("PRONTO_RUNTIME_OFFLINE", value).args([
         "bootstrap",
-        "--prefix",
+        "--path",
         tmp.path().to_str().unwrap(),
         "--no-lock",
     ]);
@@ -320,10 +373,10 @@ fn test_runtime_offline_env_var_parsing(#[case] value: &str, #[case] expect_offl
             .failure()
             .stderr(predicate::str::contains("incompatible"));
     } else {
-        // offline=false → validation passes → hits "already bootstrapped"
+        // offline=false → validation passes → hits "already installed"
         cmd.assert()
             .success()
-            .stderr(predicate::str::contains("already bootstrapped"));
+            .stderr(predicate::str::contains("already installed"));
     }
 }
 
@@ -333,7 +386,7 @@ fn test_runtime_bundle_env_var() {
     let bad_dir = tmp.path().join("nonexistent");
     runtime()
         .env("PRONTO_RUNTIME_BUNDLE", bad_dir.as_os_str())
-        .args(["bootstrap", "--prefix", tmp.path().to_str().unwrap()])
+        .args(["bootstrap", "--path", tmp.path().to_str().unwrap()])
         .assert()
         .failure()
         .stderr(predicate::str::contains("not a directory"));
@@ -344,10 +397,11 @@ fn test_runtime_status_shows_binary_name_and_version() {
     let tmp = TempDir::new().unwrap();
     let prefix = tmp.path().join("status-name");
     std::fs::create_dir_all(prefix.join("conda-meta")).unwrap();
+    write_runtime_metadata(&prefix);
 
     let version = env!("CARGO_PKG_VERSION");
     runtime()
-        .args(["status", "--prefix", prefix.to_str().unwrap()])
+        .args(["status", "--path", prefix.to_str().unwrap()])
         .assert()
         .success()
         .stdout(
@@ -359,7 +413,7 @@ fn test_runtime_status_shows_binary_name_and_version() {
 
 fn rattler_pkgs_cache_dir() -> PathBuf {
     dirs::cache_dir()
-        .expect("cache dir")
+        .expect("cache path")
         .join("rattler")
         .join("cache")
         .join("pkgs")
@@ -369,7 +423,9 @@ fn rattler_pkgs_cache_dir() -> PathBuf {
 #[test]
 fn test_runtime_uninstall_default_prefix_respects_home() {
     let tmp = TempDir::new().unwrap();
-    std::fs::create_dir_all(tmp.path().join(".pronto-runtime/conda-meta")).unwrap();
+    let prefix = tmp.path().join(".conda").join("pronto-runtime");
+    std::fs::create_dir_all(prefix.join("conda-meta")).unwrap();
+    write_runtime_metadata(&prefix);
 
     runtime()
         .env("HOME", tmp.path().as_os_str())
@@ -381,5 +437,5 @@ fn test_runtime_uninstall_default_prefix_respects_home() {
             predicate::str::contains("Continue? [y/N]").and(predicate::str::contains("Aborted.")),
         );
 
-    assert!(tmp.path().join(".pronto-runtime").exists());
+    assert!(prefix.exists());
 }

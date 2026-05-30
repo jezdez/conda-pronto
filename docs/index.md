@@ -1,26 +1,26 @@
 # conda-pronto
 
-Build ready-to-run conda bootstrap binaries.
+Build ready-to-run conda runtimes.
 
-`conda-pronto` is a generic builder and runtime for single-binary conda
-distributions. It installs the `pronto` CLI, but it does not ship a first-party
-distribution runtime. Downstream projects choose the binary name, package set,
-channels, documentation URL, and release channel.
+`conda-pronto` is a generic builder for single-binary conda runtimes. It
+installs the `pronto` CLI, but it does not ship a first-party distribution.
+Downstream projects choose the command name, package set, channels,
+documentation URL, and release channel.
 
 `conda-express` is one downstream distribution: it uses conda-pronto to build the
-official `cx` and `cxz` binaries. conda-pronto owns the reusable builder/runtime;
+official `cx` and `cxz` runtimes. conda-pronto owns the reusable builder;
 conda-express owns the product defaults and release channels for `cx`.
 
 ## Start Here
 
 If you are new to conda-pronto, build the tutorial runtime first. From a
 conda-pronto source checkout, this gives you a working mental model for locks,
-artifacts, and the generated runtime command:
+artifacts, and the generated runtime:
 
 ```bash
 pronto lock
-pronto build --layout online --name demo
-pronto run --name demo -- bootstrap --prefix /tmp/demo
+pronto build --layout online --command demo
+pronto run --command demo -- --path /tmp/demo bootstrap
 ```
 
 Then use the documentation by the kind of help you need.
@@ -41,7 +41,7 @@ Follow a guided first build from lockfile to smoke test.
 :link: how-to/customize-runtime
 :link-type: doc
 
-Build a named downstream runtime with your own package set.
+Build a downstream runtime with your own package set.
 :::
 
 :::{grid-item-card} Look Up
