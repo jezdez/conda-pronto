@@ -60,28 +60,22 @@ Read the builder/runtime model and where conda-pronto fits in the conda ecosyste
 
 ::::
 
-## Project Boundaries
+## Example Distribution
 
-::::{grid} 1 1 3 3
+::::{grid} 1 1 2 2
 :gutter: 3
 
 :::{grid-item-card} conda-pronto
 :link: explanation/project-boundaries
 :link-type: doc
 
-Generic builder/runtime machinery for native bootstrap binaries.
+Read what the builder owns and what downstream distributions own.
 :::
 
 :::{grid-item-card} conda-express
 :link: https://jezdez.github.io/conda-express/
 
-Downstream distribution that publishes the official `cx` and `cxz` binaries.
-:::
-
-:::{grid-item-card} conda-wasm
-:link: https://jezdez.github.io/conda-wasm/
-
-Browser, WebAssembly, Emscripten, and JupyterLite conda tooling.
+See a concrete downstream distribution built with conda-pronto.
 :::
 
 ::::

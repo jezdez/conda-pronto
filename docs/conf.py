@@ -51,7 +51,6 @@ html_baseurl = "https://jezdez.github.io/conda-pronto/"
 
 intersphinx_mapping = {
     "conda-express": ("https://jezdez.github.io/conda-express/", None),
-    "conda-wasm": ("https://jezdez.github.io/conda-wasm/", None),
 }
 
 exclude_patterns = ["_build"]

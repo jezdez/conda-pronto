@@ -8,7 +8,7 @@ distribution policy in downstream projects.
 
 ## Ownership At A Glance
 
-::::{grid} 1 1 3 3
+::::{grid} 1 1 2 2
 :gutter: 3
 
 :::{grid-item-card} conda-pronto
@@ -21,12 +21,6 @@ metadata files.
 
 Package sets, binary names, release channels, installer wrappers, and user
 documentation.
-:::
-
-:::{grid-item-card} conda-wasm
-
-Browser, WebAssembly, Emscripten, JupyterLite, and browser-specific package
-handling.
 :::
 
 ::::
@@ -83,19 +77,6 @@ set remains conda-express project input; conda-pronto does not hard-code those
 choices. Its own scope page is
 {external+conda-express:doc}`Project scope <scope>`.
 
-## conda-wasm
-
-Browser and WebAssembly work belongs in
-{external+conda-wasm:doc}`conda-wasm <index>`, not conda-pronto:
-
-- WebAssembly crates
-- Emscripten conda patches
-- JupyterLite integration
-- browser package extraction and solving behavior
-- emscripten-forge packaging
-
-conda-pronto is focused on native bootstrap binaries.
-
 ## Relationship To Other Tools
 
 conda-pronto complements other conda ecosystem tools:
@@ -113,19 +94,7 @@ conda-pronto does not produce installer-generator output such as `.sh`, `.pkg`, 
 `.msi`. Those formats can wrap conda-pronto-built binaries when a downstream
 distribution needs them.
 
-## What Moved From conda-express
-
-These areas used to be documented or implemented in conda-express and now
-belong here:
-
-- custom bootstrap binary builds
-- package-set customization
-- runtime lock derivation
-- offline and embedded bundle layouts
-- staged artifact metadata
-- generic GitHub Action usage
-- generated runtime command behavior
-
-The {external+conda-express:doc}`conda-express docs <index>` describe `cx`
-and `cxz` as products. conda-pronto docs describe how to build and reason about
-products like them.
+The {external+conda-express:doc}`conda-express docs <index>` are useful as a
+concrete example of a downstream distribution. They describe `cx` and `cxz` as
+products; conda-pronto docs describe how to build and reason about products
+like them.
