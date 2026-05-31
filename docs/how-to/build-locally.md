@@ -33,23 +33,32 @@ When you want to check the selected source environment before building, run:
 cs inspect
 ```
 
-If you changed the configured source environment in `conda.toml` or `pyproject.toml`
-with `[tool.conda]`, use
-{external+conda-workspaces:doc}`conda workspace lock <reference/cli>` to refresh
-the source lockfile before building:
+If you changed the configured source environment, refresh the source lockfile
+with the tool that owns the manifest:
+
+::::{tab-set}
+
+:::{tab-item} conda-workspaces
 
 ```bash
 conda workspace lock
 cs inspect
 ```
 
-For Pixi-compatible builds, including `pyproject.toml` with `[tool.pixi]`, use
-Pixi to refresh the source lockfile:
+Use this for `conda.toml` and `pyproject.toml` with `[tool.conda]`.
+:::
+
+:::{tab-item} Pixi
 
 ```bash
 pixi lock
 cs inspect
 ```
+
+Use this for `pixi.toml` and `pyproject.toml` with `[tool.pixi]`.
+:::
+
+::::
 
 CI can use JSON output for machine-readable preflight checks:
 

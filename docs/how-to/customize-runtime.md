@@ -109,10 +109,16 @@ not choose one for every runtime.
 
 ## Configure Local Build Input
 
-When a project carries `conda.toml` and `conda.lock`, keep package and channel
-intent in the
-{external+conda-workspaces:doc}`conda workspace sections <reference/conda-toml-spec>`
-and put conda-ship-specific build policy in `[tool.conda-ship]`:
+Keep package and channel intent in the manifest format owned by your workspace
+tool. Keep conda-ship-specific build policy in `[tool.conda-ship]`.
+
+::::{tab-set}
+
+:::{tab-item} conda.toml
+
+Use `conda.toml` when the project uses
+{external+conda-workspaces:doc}`conda-workspaces <index>` as its primary
+manifest:
 
 ```toml
 [workspace]
@@ -143,17 +149,19 @@ install-name = "demo"
 install-method = "homebrew"
 ```
 
-Then refresh the source lockfile with
-{external+conda-workspaces:doc}`conda workspace lock <reference/cli>`. conda-ship
-will derive its runtime lock during `cs build`:
+Refresh the source lockfile:
 
 ```bash
 conda workspace lock
 ```
 
-If a Python project keeps conda-workspaces config in `pyproject.toml`, use the
-same tables under `[tool.conda]` and keep `[tool.conda-ship]` as a sibling tool
-table:
+:::
+
+:::{tab-item} pyproject.toml with `[tool.conda]`
+
+Use this form when a Python project keeps conda-workspaces config in
+`pyproject.toml`. conda-workspaces tables live under `[tool.conda]`, while
+`[tool.conda-ship]` remains a sibling tool table:
 
 ```toml
 [tool.conda.workspace]
@@ -178,12 +186,22 @@ source-environment = "ship"
 exclude = ["conda-libmamba-solver"]
 ```
 
-This still uses `conda workspace lock` and `conda.lock`.
+Refresh the source lockfile:
 
-For Pixi-compatible projects, keep the source environment package intent in Pixi's own
-sections. If Pixi config lives in `pyproject.toml`, the package and channel
-sections live under `[tool.pixi]`, while `[tool.conda-ship]` stays at the Python
-project tool level:
+```bash
+conda workspace lock
+```
+
+This writes `conda.lock`.
+
+:::
+
+:::{tab-item} Pixi
+
+For Pixi-compatible projects, keep the source environment package intent in
+Pixi's own sections. If Pixi config lives in `pyproject.toml`, the package and
+channel sections live under `[tool.pixi]`, while `[tool.conda-ship]` stays at
+the Python project tool level:
 
 ```toml
 [tool.pixi.workspace]
@@ -210,12 +228,20 @@ source-environment = "ship"
 exclude = ["conda-libmamba-solver"]
 ```
 
-Then refresh the source lockfile. conda-ship consumes the solved `ship`
-environment during `cs build`; it does not replace the workspace solver.
+Refresh the source lockfile:
 
 ```bash
 pixi lock
 ```
+
+This writes `pixi.lock`.
+
+:::
+
+::::
+
+conda-ship consumes the solved `ship` environment during `cs build`; it does
+not replace the workspace solver.
 
 Build the runtime:
 

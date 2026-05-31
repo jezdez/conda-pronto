@@ -7,6 +7,27 @@ The layout changes how package archives travel with the runtime. It does not
 change the package set. All layouts use the same runtime lock derived from the
 selected source environment.
 
+::::{grid} 1 1 3 3
+:gutter: 3
+
+:::{grid-item-card} `online`
+
+Small runtime artifact. Downloads package archives during bootstrap.
+:::
+
+:::{grid-item-card} `external`
+
+Runtime binary plus separate package bundle. Useful for installers and managed
+deployment systems.
+:::
+
+:::{grid-item-card} `embedded`
+
+One larger runtime file. Carries package archives for offline bootstrap.
+:::
+
+::::
+
 ## Use `online` For Small Release Assets
 
 Choose `online` when users can download conda package archives during
@@ -110,4 +131,3 @@ steps:
     with:
       layout: ${{ matrix.layout }}
 ```
-

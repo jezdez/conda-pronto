@@ -7,6 +7,28 @@ conda-ship does not generate `.sh`, `.pkg`, `.msi`, Homebrew formulae, Docker
 images, or constructor installers. It produces runtimes and metadata that those
 systems can wrap.
 
+::::{grid} 1 1 2 3
+:gutter: 3
+
+:::{grid-item-card} Direct Assets
+
+Upload the complete `dist/` contents to a release channel.
+:::
+
+:::{grid-item-card} Package Managers
+
+Install the runtime binary through Homebrew, conda packages, or another package
+manager.
+:::
+
+:::{grid-item-card} Installers And Images
+
+Wrap online, external, or embedded runtimes in installers, Docker images, or
+internal deployment systems.
+:::
+
+::::
+
 ## Start From The Output Directory
 
 Every build writes a directory like `dist/`:
