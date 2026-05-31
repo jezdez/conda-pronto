@@ -1,24 +1,62 @@
 # conda-ship
 
-Build ready-to-run conda runtimes.
+[![CI](https://github.com/jezdez/conda-ship/actions/workflows/ci.yml/badge.svg)](https://github.com/jezdez/conda-ship/actions/workflows/ci.yml)
+[![Docs](https://github.com/jezdez/conda-ship/actions/workflows/docs.yml/badge.svg)](https://jezdez.github.io/conda-ship/)
+[![zizmor](https://img.shields.io/badge/%F0%9F%8C%88-zizmor-white?labelColor=white)](https://github.com/jezdez/conda-ship/actions/workflows/zizmor.yml)
+[![License](https://img.shields.io/github/license/jezdez/conda-ship)](https://github.com/jezdez/conda-ship/blob/main/LICENSE)
+[![Python: 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
+
+Build ready-to-run conda runtimes from solved conda environments.
 
 `conda-ship` is a generic builder for single-binary conda runtimes. It
-installs the `cs` CLI.
+provides the `cs` builder CLI, the `cs-template` generic runtime template, a
+composite GitHub Action, and an optional Python adapter that exposes
+`conda ship` inside conda.
 
-`conda-express` is a downstream distribution that uses conda-ship to publish the
-official `cx` and `cxz` runtimes. conda-ship owns the generic builder; a
-downstream distribution owns its package set, runtime names, release channels,
-and installer wrappers.
+The project is currently alpha and pre-1.0. The split from
+[`conda-express`](https://jezdez.github.io/conda-express/) is now explicit:
+conda-ship owns the reusable build/runtime machinery, while downstream
+distributions own their package sets, runtime names, release channels, installer
+wrappers, and user documentation. conda-express is one downstream distribution;
+it uses conda-ship to publish the official `cx` and `cxz` runtimes.
 
-Artifact layouts:
+## What It Builds
 
-- `online`: runtime `<runtime>` with stamped lock/metadata; packages are downloaded during bootstrap.
-- `external`: runtime `<runtime>` plus `<runtime>.bundle.tar.zst`.
-- `embedded`: runtime `<runtime>z` with the compressed bundle embedded in one binary.
+conda-ship stages a runtime binary plus release metadata:
 
-The CLI builds from a solved downstream project. Packaged builds find the
-installed runtime template automatically. Use `--template` only for an explicit
-template path, custom packaging, or cross-builds:
+- `.runtime.lock`: the lockfile stamped into the runtime
+- `.packages.txt`: tab-separated package records for quick inspection
+- `.info.json`: artifact metadata for release tooling
+- `.sha256`: checksums for staged files
+- optional `.bundle.tar.zst`: compressed package archives for offline builds
+
+The runtime itself has a small management surface: `bootstrap`, `status`,
+`shell`, and `uninstall`. Other commands pass through to the configured
+delegate executable after bootstrap, usually `conda`.
+
+## Artifact Layouts
+
+| Layout | Output | Bootstrap behavior |
+| --- | --- | --- |
+| `online` | `<runtime>` | Downloads packages from the stamped runtime lock. |
+| `external` | `<runtime>` plus `<runtime>.bundle.tar.zst` | Uses a separate package bundle for offline-capable installs. |
+| `embedded` | `<runtime>z` | Embeds the compressed package bundle in one binary. |
+
+## Project Input
+
+conda-ship builds from an already solved source environment. It does not solve
+loose matchspecs in the GitHub Action and it does not define a package set of
+its own.
+
+Supported manifest and lockfile pairs:
+
+- `conda.toml` plus `conda.lock`
+- `pyproject.toml` with `[tool.conda]` plus `conda.lock`
+- `pixi.toml` plus `pixi.lock`
+- `pyproject.toml` with `[tool.pixi]` plus `pixi.lock`
+
+The package and channel intent lives in the selected source environment.
+`[tool.conda-ship]` only records conda-ship build policy:
 
 ```toml
 [tool.conda-ship]
@@ -26,7 +64,17 @@ runtime = "demo"
 delegate = "conda"
 layout = "online"
 source-environment = "ship"
+exclude = ["conda-libmamba-solver"]
 ```
+
+The selected source environment must include the runtime contract packages:
+`conda`, `conda-rattler-solver`, and `conda-spawn`.
+
+## Local Workflow
+
+Packaged builds find `cs-template` next to the installed `cs` executable.
+Use `--template` only for an explicit template path, custom packaging, or
+cross-builds.
 
 ```bash
 cs inspect
@@ -36,28 +84,83 @@ cs build --layout embedded
 cs run -- --path /tmp/demo-smoke bootstrap
 ```
 
-Every `cs build` writes the runtime binary plus artifact metadata: the
-runtime lock, a tab-separated package list, an info JSON document, and SHA256
-checksums. The runtime is stamped with the runtime lock, distribution
-metadata, and optional embedded bundle before checksums are written. The GitHub
-Action downloads tagged `cs` and `cs-template` release assets, verifies
-their GitHub attestations and `SHA256SUMS`, and then uses the same stamping path
-against a committed downstream manifest and lockfile.
+`cs inspect` is the preflight command. It derives the runtime lock, validates the
+selected source environment, applies package exclusions, and prints the package
+set without writing artifacts.
 
-Most users run the builder as `cs`. The Python package can also make
-`conda ship` available inside a conda environment; that command is a shortcut
-for the same `cs` executable. Conda packages install the Rust binary and
-the small Python adapter together.
+## GitHub Actions
 
-Generic runtime behavior stays here; opinionated package sets and distribution
-defaults belong in downstream distributions.
+The repository root is also a composite GitHub Action for downstream release
+jobs:
 
-`conda.toml` plus `conda.lock` is the preferred manifest/lockfile pair for new
-conda-ship project metadata. `pyproject.toml` with `[tool.conda]` also uses
-`conda.lock`. `pixi.toml` plus `pixi.lock` and `pyproject.toml` with
-`[tool.pixi]` plus `pixi.lock` remain supported for Pixi-compatible workflows.
+```yaml
+- uses: jezdez/conda-ship@v0.1.0
+  id: cs
+  with:
+    layout: embedded
+```
 
-`cs` is not an OS installer generator and does not target `.sh`, `.pkg`, or
-`.msi` output. It produces runtimes that can be distributed directly
-or wrapped by Homebrew, constructor, Docker, enterprise packaging systems, and
-other release tooling.
+The action expects a committed manifest and matching lockfile. It downloads the
+tagged `cs`, `cs-template`, and `SHA256SUMS` release assets for the runner,
+verifies their GitHub Artifact Attestations, checks the release checksums, runs
+`cs build --dry-run`, and then stages the runtime into a `dist-path` output.
+
+Use release tags for release builds. Branch refs do not have matching
+conda-ship release assets.
+
+## Packaging
+
+conda-ship is not an OS installer generator. It does not target `.sh`, `.pkg`,
+or `.msi` output directly. It produces runtimes that can be distributed as
+GitHub Release assets or wrapped by Homebrew, constructor, Docker, enterprise
+packaging systems, and other release tooling.
+
+A conda package can install the `cs` builder, the `cs-template` runtime
+template, and the optional Python adapter together. The adapter makes
+`conda ship` a shortcut for the same builder; it does not make conda-ship part
+of conda itself.
+
+## What Belongs Downstream
+
+Downstream distributions decide:
+
+- runtime names and delegates
+- package sets and channels
+- package exclusions
+- install schemes and install names
+- documentation URLs
+- release channels and installers
+- signing, SBOM, and in-toto provenance for final artifacts
+
+conda-ship verifies the inputs it consumes and the package archives it stages or
+installs, but downstream release systems should sign and attest the final
+runtime artifacts after `cs build`.
+
+## Documentation
+
+Full documentation is available at
+[jezdez.github.io/conda-ship](https://jezdez.github.io/conda-ship/).
+
+Useful starting points:
+
+- [Build your first runtime](https://jezdez.github.io/conda-ship/tutorials/first-runtime/)
+- [Build in GitHub Actions](https://jezdez.github.io/conda-ship/how-to/build-in-github-actions/)
+- [Configuration reference](https://jezdez.github.io/conda-ship/reference/configuration/)
+- [Project boundaries](https://jezdez.github.io/conda-ship/explanation/project-boundaries/)
+
+## Development
+
+```bash
+pixi install
+pixi run test
+pixi run lint
+pixi run -e test pytest
+pixi run docs
+```
+
+Run `cargo generate-lockfile` after changing Cargo metadata and `pixi lock`
+after changing pixi metadata.
+
+## License
+
+BSD-3-Clause
