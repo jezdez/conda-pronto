@@ -45,8 +45,14 @@ pub(crate) fn install_method() -> Option<&'static str> {
 
 // Prefix metadata.
 
+const PREFIX_METADATA_SCHEMA_VERSION: u8 = 1;
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct PrefixMetadata {
+    pub schema_version: u8,
+    pub display_name: String,
+    pub install_name: String,
+    pub metadata_file: String,
     pub version: String,
     pub channels: Vec<String>,
     pub packages: Vec<String>,
@@ -62,6 +68,10 @@ pub fn write_metadata(
     packages: &[String],
 ) -> miette::Result<()> {
     let meta = PrefixMetadata {
+        schema_version: PREFIX_METADATA_SCHEMA_VERSION,
+        display_name: policy::display_name().to_string(),
+        install_name: policy::install_name().to_string(),
+        metadata_file: policy::metadata_file().to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         channels: channels.to_vec(),
         packages: packages.to_vec(),
@@ -79,6 +89,37 @@ pub fn read_metadata(prefix: &Path) -> miette::Result<PrefixMetadata> {
     serde_json::from_str(&data)
         .into_diagnostic()
         .with_context(|| format!("failed to parse runtime metadata at {}", path.display()))
+}
+
+pub(crate) fn validate_metadata_identity(meta: &PrefixMetadata) -> miette::Result<()> {
+    if meta.schema_version != PREFIX_METADATA_SCHEMA_VERSION {
+        return Err(miette::miette!(
+            "unsupported runtime metadata schema version: {}",
+            meta.schema_version
+        ));
+    }
+    if meta.display_name != policy::display_name() {
+        return Err(miette::miette!(
+            "runtime metadata belongs to {}, not {}",
+            meta.display_name,
+            policy::display_name()
+        ));
+    }
+    if meta.install_name != policy::install_name() {
+        return Err(miette::miette!(
+            "runtime metadata install name is {}, expected {}",
+            meta.install_name,
+            policy::install_name()
+        ));
+    }
+    if meta.metadata_file != policy::metadata_file() {
+        return Err(miette::miette!(
+            "runtime metadata file is {}, expected {}",
+            meta.metadata_file,
+            policy::metadata_file()
+        ));
+    }
+    Ok(())
 }
 
 // conda-meta/frozen (CEP 22).
@@ -169,6 +210,10 @@ mod tests {
         write_metadata(tmp.path(), &channels, &packages).unwrap();
 
         let meta = read_metadata(tmp.path()).unwrap();
+        assert_eq!(meta.schema_version, PREFIX_METADATA_SCHEMA_VERSION);
+        assert_eq!(meta.display_name, policy::display_name());
+        assert_eq!(meta.install_name, policy::install_name());
+        assert_eq!(meta.metadata_file, policy::metadata_file());
         assert_eq!(meta.channels, channels);
         assert_eq!(meta.packages, packages);
     }

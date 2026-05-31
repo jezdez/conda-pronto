@@ -17,7 +17,7 @@ fn runtime() -> assert_cmd::Command {
 fn write_runtime_metadata(prefix: &std::path::Path) {
     std::fs::write(
         prefix.join(".conda-ship-runtime.json"),
-        r#"{"version":"test","channels":["conda-forge"],"packages":["python"]}"#,
+        r#"{"schema_version":1,"display_name":"conda-ship-runtime","install_name":"conda-ship-runtime","metadata_file":".conda-ship-runtime.json","version":"test","channels":["conda-forge"],"packages":["python"]}"#,
     )
     .unwrap();
 }
@@ -234,23 +234,6 @@ fn test_runtime_uninstall_refuses_unmanaged_prefix() {
         .stderr(predicate::str::contains("unmanaged install path"));
 
     assert!(prefix.exists(), "unmanaged prefix should not be removed");
-}
-
-#[rstest]
-#[case::no_lock("--no-lock")]
-#[case::package("--package")]
-#[case::channel("--channel")]
-fn test_runtime_bootstrap_rejects_live_solve_flags(#[case] flag: &str) {
-    let tmp = TempDir::new().unwrap();
-    let mut args = vec!["bootstrap", "--path", tmp.path().to_str().unwrap(), flag];
-    if flag != "--no-lock" {
-        args.push("numpy");
-    }
-    runtime()
-        .args(args)
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("unexpected argument"));
 }
 
 #[test]

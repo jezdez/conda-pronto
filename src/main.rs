@@ -115,8 +115,8 @@ async fn async_main() -> miette::Result<()> {
             if policy::delegate() == "conda" {
                 let first_arg = delegate_args.first().map(String::as_str);
                 match first_arg {
-                    Some("activate") | Some("deactivate") => {
-                        print_disabled_shell_command(first_arg.unwrap());
+                    Some(command @ ("activate" | "deactivate")) => {
+                        print_disabled_shell_command(command);
                     }
                     Some("init") => {
                         print_disabled_init();

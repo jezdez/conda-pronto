@@ -3,6 +3,7 @@
 use std::{
     borrow::Cow,
     collections::HashMap,
+    io::Read,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
@@ -263,28 +264,28 @@ pub fn extract_embedded_bundle() -> miette::Result<Option<PathBuf>> {
         let path = entry
             .path()
             .into_diagnostic()
-            .context("failed to read bundle entry path")?;
-        let path_str = path.to_string_lossy();
-        if path_str.contains("..") || path.is_absolute() {
+            .context("failed to read bundle entry path")?
+            .into_owned();
+        let archive_name = bundle_archive_name_from_path(&path)?;
+        let path_str = path.display().to_string();
+        let entry_type = entry.header().entry_type();
+        if entry_type.is_symlink() || entry_type.is_hard_link() {
             return Err(miette::miette!(
-                "unsafe path in embedded bundle: {}",
+                "embedded bundle contains a link entry: {}",
                 path_str
             ));
         }
-        let entry_type = entry.header().entry_type();
-        if entry_type.is_symlink() || entry_type.is_hard_link() {
-            continue;
-        }
-        if !(entry_type.is_file() || entry_type.is_dir()) {
+        if !entry_type.is_file() {
             return Err(miette::miette!(
                 "unsupported entry type in embedded bundle: {}",
                 path_str
             ));
         }
+        let dest = tmp_dir.path().join(&archive_name);
         entry
-            .unpack_in(tmp_dir.path())
+            .unpack(&dest)
             .into_diagnostic()
-            .context("failed to unpack bundle entry")?;
+            .with_context(|| format!("failed to unpack bundle entry {path_str}"))?;
     }
 
     eprintln!(
@@ -310,18 +311,62 @@ pub(crate) fn index_bundle_dir(dir: &Path) -> miette::Result<HashMap<String, Pat
     for entry in entries {
         let entry = entry.into_diagnostic()?;
         let path = entry.path();
-        if !path.is_file() {
+        let metadata = std::fs::symlink_metadata(&path)
+            .into_diagnostic()
+            .with_context(|| format!("failed to inspect bundle entry: {}", path.display()))?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
             continue;
         }
         let name = match path.file_name().and_then(|n| n.to_str()) {
             Some(n) => n.to_string(),
             None => continue,
         };
-        if name.ends_with(".conda") || name.ends_with(".tar.bz2") {
+        if validate_bundle_archive_name(&name).is_ok() {
             index.insert(name, path);
         }
     }
     Ok(index)
+}
+
+fn bundle_archive_name_from_path(path: &Path) -> miette::Result<String> {
+    let mut components = path.components();
+    let name = match (components.next(), components.next()) {
+        (Some(std::path::Component::Normal(name)), None) => name,
+        _ => {
+            return Err(miette::miette!(
+                "embedded bundle entries must be flat package archive names: {}",
+                path.display()
+            ));
+        }
+    };
+    let name = name.to_str().ok_or_else(|| {
+        miette::miette!(
+            "embedded bundle contains a non-UTF-8 package archive name: {}",
+            path.display()
+        )
+    })?;
+    validate_bundle_archive_name(name)?;
+    Ok(name.to_string())
+}
+
+fn validate_bundle_archive_name(name: &str) -> miette::Result<()> {
+    if name.is_empty()
+        || name == "."
+        || name == ".."
+        || name.contains('/')
+        || name.contains('\\')
+        || name.chars().any(char::is_control)
+    {
+        return Err(miette::miette!(
+            "invalid bundle package archive name: {name:?}"
+        ));
+    }
+    if !(name.ends_with(".conda") || name.ends_with(".tar.bz2")) {
+        return Err(miette::miette!(
+            "bundle package archive name must end with .conda or .tar.bz2: {name}"
+        ));
+    }
+    Ok(())
 }
 
 /// Match lockfile records to files in a bundle index.
@@ -361,11 +406,7 @@ fn verify_bundle_package(
     let expected = record.package_record.sha256.as_ref().ok_or_else(|| {
         miette::miette!("{filename} has no SHA256 in the lockfile; refusing bundle install")
     })?;
-    let data = std::fs::read(path).into_diagnostic().context(format!(
-        "failed to read bundle package for checksum: {}",
-        path.display()
-    ))?;
-    let actual = Sha256::digest(&data);
+    let actual = sha256_file(path)?;
     if actual.as_slice() != expected.as_slice() {
         return Err(miette::miette!(
             "SHA256 mismatch for bundled package {filename}: expected {}, got {}",
@@ -374,6 +415,25 @@ fn verify_bundle_package(
         ));
     }
     Ok(())
+}
+
+fn sha256_file(path: &Path) -> miette::Result<[u8; 32]> {
+    let mut file = std::fs::File::open(path)
+        .into_diagnostic()
+        .with_context(|| format!("failed to open bundle package: {}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .into_diagnostic()
+            .with_context(|| format!("failed to read bundle package: {}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hasher.finalize().into())
 }
 
 fn hex_bytes(bytes: &[u8]) -> String {
@@ -502,6 +562,39 @@ mod tests {
             assert!(name.ends_with(".conda") || name.ends_with(".tar.bz2"));
             assert!(path.exists());
         }
+    }
+
+    #[test]
+    fn test_bundle_archive_name_rejects_nested_paths() {
+        let err = bundle_archive_name_from_path(Path::new("nested/foo-1.0-h1.conda"))
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("must be flat package archive names"));
+    }
+
+    #[test]
+    fn test_bundle_archive_name_rejects_non_package_suffix() {
+        let err = bundle_archive_name_from_path(Path::new("readme.txt"))
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("must end with .conda or .tar.bz2"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_index_bundle_dir_skips_symlinks() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let target = tmp.path().join("target.conda");
+        let link = tmp.path().join("linked.conda");
+        std::fs::write(&target, b"package").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let index = index_bundle_dir(tmp.path()).unwrap();
+
+        assert!(index.contains_key("target.conda"));
+        assert!(!index.contains_key("linked.conda"));
     }
 
     fn make_record_with_url(filename: &str, data: &[u8]) -> RepoDataRecord {

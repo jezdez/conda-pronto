@@ -1,6 +1,6 @@
 //! Subcommand implementations and prefix helpers.
 
-use std::process::Stdio;
+use std::process::{Command, Stdio};
 use std::{env, path::Path};
 
 use miette::{Context, IntoDiagnostic};
@@ -41,13 +41,21 @@ fn read_managed_metadata(prefix: &Path, action: &str) -> miette::Result<PrefixMe
         ));
     }
 
-    read_metadata(prefix).map_err(|err| {
+    let meta = read_metadata(prefix).map_err(|err| {
         miette::miette!(
             "refusing to {action} unmanaged install path: {}\n  Invalid runtime metadata file: {}\n  {err}",
             prefix.display(),
             metadata_path.display()
         )
-    })
+    })?;
+    crate::config::validate_metadata_identity(&meta).map_err(|err| {
+        miette::miette!(
+            "refusing to {action} install path owned by a different runtime: {}\n  Invalid runtime metadata file: {}\n  {err}",
+            prefix.display(),
+            metadata_path.display()
+        )
+    })?;
+    Ok(meta)
 }
 
 pub(crate) async fn ensure_bootstrapped(prefix: &Path) -> miette::Result<()> {
@@ -73,11 +81,21 @@ pub(crate) async fn ensure_bootstrapped(prefix: &Path) -> miette::Result<()> {
 
 fn reject_dangerous_prefix(prefix: &Path) -> miette::Result<()> {
     let home = dirs::home_dir();
+    if std::fs::symlink_metadata(prefix)
+        .map(|metadata| metadata.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        return Err(miette::miette!(
+            "refusing to remove symbolic-link install path: {}",
+            prefix.display()
+        ));
+    }
     let canon = prefix
         .canonicalize()
         .unwrap_or_else(|_| prefix.to_path_buf());
 
-    let dangerous = canon == Path::new("/")
+    let dangerous = canon.parent().is_none()
+        || canon == Path::new("/")
         || canon == Path::new("")
         || home.as_deref() == Some(&canon)
         || canon == std::env::current_dir().unwrap_or_default();
@@ -238,7 +256,7 @@ pub(crate) async fn bootstrap(
 }
 
 fn compile_python_bytecode(prefix: &Path) {
-    let python = prefix.join("bin").join("python");
+    let python = exec::executable_in_prefix(prefix, "python");
     if !python.exists() {
         return;
     }
@@ -368,9 +386,10 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
                     env_name
                 );
             }
-            let output = std::process::Command::new(&conda)
-                .args(["remove", "--all", "-n", env_name, "-y", "--json"])
-                .env("CONDA_ROOT_PREFIX", prefix)
+            let mut command = Command::new(&conda);
+            command.args(["remove", "--all", "-n", env_name, "-y", "--json"]);
+            exec::apply_delegate_environment(&mut command, prefix)?;
+            let output = command
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
                 .output();
@@ -439,9 +458,6 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
         );
         eprintln!("{hint}");
     }
-
-    remove_shell_path_entries(prefix);
-
     if verbosity != Verbosity::Quiet {
         eprintln!(
             "\n{} {} has been uninstalled.",
@@ -451,68 +467,6 @@ pub(crate) fn uninstall(prefix: &Path, yes: bool, verbosity: Verbosity) -> miett
     }
 
     Ok(())
-}
-
-fn remove_shell_path_entries(prefix: &Path) {
-    let condabin_path = format!("export PATH=\"{}/condabin:$PATH\"", prefix.display());
-    let install_path = env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
-    let install_path = install_path
-        .as_ref()
-        .map(|d| format!("export PATH=\"{}:$PATH\"", d.display()));
-
-    let home = match dirs::home_dir() {
-        Some(h) => h,
-        None => return,
-    };
-
-    let profiles = vec![
-        home.join(".bashrc"),
-        home.join(".zshrc"),
-        home.join(".config/fish/config.fish"),
-    ];
-
-    clean_path_entries_from_profiles(&profiles, &condabin_path, install_path.as_deref());
-}
-
-pub(crate) fn clean_path_entries_from_profiles(
-    profiles: &[std::path::PathBuf],
-    condabin_path: &str,
-    install_path: Option<&str>,
-) {
-    for profile in profiles {
-        if !profile.exists() {
-            continue;
-        }
-        let Ok(contents) = std::fs::read_to_string(profile) else {
-            continue;
-        };
-
-        let mut changed = false;
-        let filtered: Vec<&str> = contents
-            .lines()
-            .filter(|line| {
-                let dominated =
-                    line.trim() == condabin_path || install_path.is_some_and(|p| line.trim() == p);
-                if dominated {
-                    changed = true;
-                }
-                !dominated
-            })
-            .collect();
-
-        if changed {
-            let new_contents = filtered.join("\n");
-            if std::fs::write(profile, &new_contents).is_ok() {
-                eprintln!(
-                    "{} Cleaned PATH entry from {}",
-                    console::style(">>").cyan().bold(),
-                    profile.display()
-                );
-            }
-        }
-    }
 }
 
 pub(crate) fn print_disabled_shell_command(command: &str) -> ! {
@@ -550,16 +504,24 @@ pub(crate) fn print_disabled_init() -> ! {
         "  {} uses conda-spawn, which does not require shell",
         policy::display_name()
     );
-    eprintln!("  profile modifications. Just add condabin to your PATH:");
-    eprintln!();
-    eprintln!(
-        "    {}",
-        console::style(format!(
-            "export PATH=\"{}/condabin:$PATH\"",
-            policy::install_path_for_posix_shell()
-        ))
-        .green()
-    );
+    eprintln!("  profile modifications.");
+    if cfg!(windows) {
+        eprintln!();
+        eprintln!(
+            "  Add the managed prefix's condabin directory to PATH with your shell or installer if you need direct conda access."
+        );
+    } else {
+        eprintln!("  If you need direct conda access, add condabin to your PATH:");
+        eprintln!();
+        eprintln!(
+            "    {}",
+            console::style(format!(
+                "export PATH=\"{}/condabin:$PATH\"",
+                policy::install_path_for_posix_shell()
+            ))
+            .green()
+        );
+    }
     eprintln!();
     eprintln!("  Then activate environments with:");
     eprintln!();
@@ -657,82 +619,6 @@ mod tests {
             result.is_ok(),
             "uninstall on empty prefix should succeed with a no-op"
         );
-    }
-
-    #[test]
-    fn test_clean_path_entries_removes_condabin() {
-        let tmp = TempDir::new().unwrap();
-        let condabin_line = "export PATH=\"/home/user/.demo/condabin:$PATH\"";
-        let bashrc = tmp.path().join(".bashrc");
-        std::fs::write(
-            &bashrc,
-            format!("# my bashrc\n{condabin_line}\nalias ll='ls -la'\n"),
-        )
-        .unwrap();
-
-        clean_path_entries_from_profiles(std::slice::from_ref(&bashrc), condabin_line, None);
-
-        let result = std::fs::read_to_string(&bashrc).unwrap();
-        assert!(
-            !result.contains("condabin"),
-            "condabin line should be removed"
-        );
-        assert!(
-            result.contains("alias ll"),
-            "other lines should be preserved"
-        );
-    }
-
-    #[test]
-    fn test_clean_path_entries_removes_install_path() {
-        let tmp = TempDir::new().unwrap();
-        let install_line = "export PATH=\"/usr/local/bin:$PATH\"";
-        let zshrc = tmp.path().join(".zshrc");
-        std::fs::write(
-            &zshrc,
-            format!("# zshrc\n{install_line}\nexport EDITOR=vim\n"),
-        )
-        .unwrap();
-
-        clean_path_entries_from_profiles(
-            std::slice::from_ref(&zshrc),
-            "export PATH=\"/unused/condabin:$PATH\"",
-            Some(install_line),
-        );
-
-        let result = std::fs::read_to_string(&zshrc).unwrap();
-        assert!(
-            !result.contains("/usr/local/bin"),
-            "install path line should be removed"
-        );
-        assert!(
-            result.contains("EDITOR=vim"),
-            "other lines should be preserved"
-        );
-    }
-
-    #[test]
-    fn test_clean_path_entries_skips_missing_profiles() {
-        let tmp = TempDir::new().unwrap();
-        let missing = tmp.path().join("nonexistent");
-        clean_path_entries_from_profiles(&[missing], "whatever", None);
-    }
-
-    #[test]
-    fn test_clean_path_entries_no_change_when_no_match() {
-        let tmp = TempDir::new().unwrap();
-        let bashrc = tmp.path().join(".bashrc");
-        let original = "# my bashrc\nalias ll='ls -la'\n";
-        std::fs::write(&bashrc, original).unwrap();
-
-        clean_path_entries_from_profiles(
-            std::slice::from_ref(&bashrc),
-            "export PATH=\"/not/present:$PATH\"",
-            None,
-        );
-
-        let result = std::fs::read_to_string(&bashrc).unwrap();
-        assert_eq!(result, original, "file should be unchanged when no match");
     }
 
     #[test]

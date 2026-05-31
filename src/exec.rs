@@ -1,9 +1,10 @@
 //! Replace the current process with the installed delegate executable,
 //! or run conda as a subprocess with output filtering where needed.
 
+use std::ffi::OsString;
 use std::io::{BufRead, BufReader, IsTerminal};
-use std::path::Path;
-use std::process::Stdio;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use miette::IntoDiagnostic;
 
@@ -16,7 +17,17 @@ pub(crate) fn conda_binary(prefix: &Path) -> std::path::PathBuf {
 pub(crate) fn executable_in_prefix(prefix: &Path, executable: &str) -> std::path::PathBuf {
     let executable = executable_filename(executable);
     if cfg!(windows) {
-        prefix.join("Scripts").join(executable)
+        for dir in delegate_path_dirs(prefix) {
+            let candidate = dir.join(&executable);
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+        if executable.eq_ignore_ascii_case("conda.exe") {
+            prefix.join("Scripts").join(executable)
+        } else {
+            prefix.join(executable)
+        }
     } else {
         prefix.join("bin").join(executable)
     }
@@ -45,11 +56,7 @@ fn validate_executable_name(executable: &str) -> miette::Result<()> {
     Ok(())
 }
 
-fn build_delegate_command(
-    prefix: &Path,
-    delegate: &str,
-    args: &[&str],
-) -> miette::Result<std::process::Command> {
+fn build_delegate_command(prefix: &Path, delegate: &str, args: &[&str]) -> miette::Result<Command> {
     validate_executable_name(delegate)?;
     let delegate_bin = executable_in_prefix(prefix, delegate);
     if !delegate_bin.exists() {
@@ -58,14 +65,48 @@ fn build_delegate_command(
             delegate_bin.display()
         ));
     }
-    let mut cmd = std::process::Command::new(delegate_bin);
+    let mut cmd = Command::new(delegate_bin);
     cmd.args(args);
-    cmd.env("CONDA_ROOT_PREFIX", prefix);
+    apply_delegate_environment(&mut cmd, prefix)?;
     Ok(cmd)
 }
 
-fn build_conda_command(prefix: &Path, args: &[&str]) -> miette::Result<std::process::Command> {
+fn build_conda_command(prefix: &Path, args: &[&str]) -> miette::Result<Command> {
     build_delegate_command(prefix, "conda", args)
+}
+
+pub(crate) fn apply_delegate_environment(cmd: &mut Command, prefix: &Path) -> miette::Result<()> {
+    cmd.env("CONDA_ROOT_PREFIX", prefix);
+    cmd.env("CONDA_PREFIX", prefix);
+    cmd.env("CONDA_DEFAULT_ENV", "base");
+    cmd.env("CONDA_SHLVL", "1");
+    cmd.env("PATH", delegate_path_env(prefix)?);
+    Ok(())
+}
+
+fn delegate_path_env(prefix: &Path) -> miette::Result<OsString> {
+    let mut paths = delegate_path_dirs(prefix);
+    if let Some(existing) = std::env::var_os("PATH") {
+        paths.extend(std::env::split_paths(&existing));
+    }
+    std::env::join_paths(paths)
+        .map_err(|err| miette::miette!("failed to construct delegate PATH: {err}"))
+}
+
+fn delegate_path_dirs(prefix: &Path) -> Vec<PathBuf> {
+    if cfg!(windows) {
+        vec![
+            prefix.to_path_buf(),
+            prefix.join("Library").join("mingw-w64").join("bin"),
+            prefix.join("Library").join("usr").join("bin"),
+            prefix.join("Library").join("bin"),
+            prefix.join("Scripts"),
+            prefix.join("bin"),
+            prefix.join("condabin"),
+        ]
+    } else {
+        vec![prefix.join("bin"), prefix.join("condabin")]
+    }
 }
 
 /// Replace the current process with the conda binary, passing along arguments.
@@ -96,7 +137,10 @@ pub fn run_conda_filtered(prefix: &Path, args: &[&str]) -> miette::Result<()> {
         .spawn()
         .into_diagnostic()?;
 
-    let stdout = child.stdout.take().unwrap();
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| miette::miette!("failed to capture conda stdout"))?;
     let reader = BufReader::new(stdout);
 
     let mut in_activate_block = false;
@@ -297,12 +341,36 @@ mod tests {
             tmp.path().as_os_str(),
             "CONDA_ROOT_PREFIX should point to the prefix"
         );
+        let conda_prefix = envs
+            .iter()
+            .find(|(k, _)| *k == "CONDA_PREFIX")
+            .expect("CONDA_PREFIX should be set");
+        assert_eq!(
+            conda_prefix.1.unwrap(),
+            tmp.path().as_os_str(),
+            "CONDA_PREFIX should point to the prefix"
+        );
+        let default_env = envs
+            .iter()
+            .find(|(k, _)| *k == "CONDA_DEFAULT_ENV")
+            .expect("CONDA_DEFAULT_ENV should be set");
+        assert_eq!(default_env.1.unwrap(), "base");
+        let path_env = envs
+            .iter()
+            .find(|(k, _)| *k == "PATH")
+            .and_then(|(_, value)| *value)
+            .expect("PATH should be set");
+        let path_dirs: Vec<_> = std::env::split_paths(path_env).collect();
+        assert!(
+            path_dirs.contains(&bin_dir),
+            "PATH should include the delegate binary directory"
+        );
     }
 
     #[test]
     fn test_executable_in_prefix_uses_delegate_name() {
         let expected = if cfg!(windows) {
-            Path::new("/opt/conda/Scripts/python.exe")
+            Path::new("/opt/conda/python.exe")
         } else {
             Path::new("/opt/conda/bin/python")
         };

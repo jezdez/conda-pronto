@@ -143,7 +143,10 @@ pub struct RuntimeData {
 static CURRENT_RUNTIME_DATA: LazyLock<RuntimeData> = LazyLock::new(|| match from_current_exe() {
     Ok(Some(data)) => data,
     Ok(None) => RuntimeData::default(),
-    Err(err) => panic!("invalid conda-ship runtime data: {err}"),
+    Err(err) => {
+        eprintln!("error: invalid conda-ship runtime data: {err}");
+        std::process::exit(1);
+    }
 });
 
 #[allow(dead_code)]
